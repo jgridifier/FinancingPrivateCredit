@@ -19,6 +19,8 @@ dependencies = [
     "scipy>=1.11.0",
     "statsmodels>=0.14.0",
     "streamlit>=1.28.0",
+    "interpret>=0.6.0",
+    "pyarrow>=14.0.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,7 @@ dev = [
 
 [project.scripts]
 credit-dashboard = "financing_private_credit.dashboard:main"
+backtest-models = "financing_private_credit.scripts.backtest_models:main"
 
 [build-system]
 requires = ["hatchling"]

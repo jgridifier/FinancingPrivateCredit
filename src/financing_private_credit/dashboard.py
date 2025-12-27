@@ -329,10 +329,13 @@ def load_nowcast_data() -> tuple[pl.DataFrame, dict]:
 
 @st.cache_data(ttl=900)  # 15-minute cache
 def load_weekly_h8_data() -> pl.DataFrame:
-    """Load weekly H.8 bank credit data for monitoring."""
+    """Load weekly H.8 bank credit data for monitoring.
+
+    Uses local file caching (6-hour expiry) to reduce FRED API load.
+    """
     try:
-        from .data import FREDDataFetcher
-        fetcher = FREDDataFetcher()
+        from .cache import CachedFREDFetcher
+        fetcher = CachedFREDFetcher(max_age_hours=6)
 
         # Weekly H.8 series
         h8_series = ["TOTLL", "BUSLOANS", "CONSUMER", "REALLN"]

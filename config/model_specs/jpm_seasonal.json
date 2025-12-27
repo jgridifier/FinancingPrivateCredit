@@ -1,0 +1,17 @@
+{
+  "name": "jpm_seasonal",
+  "description": "JPM-specific model with enhanced seasonality handling for Q4 provision spikes",
+  "target": "provision_rate",
+  "ar_lags": [1, 2, 3, 4, 8],
+  "exogenous_vars": ["lis", "loan_growth_yoy"],
+  "exogenous_lags": {
+    "lis": [4, 8]
+  },
+  "include_seasonality": true,
+  "seasonality_period": 4,
+  "max_bins": 20,
+  "min_observations_in_split": 3,
+  "max_interaction_level": 2,
+  "holdout_periods": 8,
+  "bank_fixed_effects": false
+}
