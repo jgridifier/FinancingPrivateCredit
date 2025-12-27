@@ -242,29 +242,39 @@ class BankDataCollector:
     """
 
     # XBRL concept mappings for key metrics
+    # IMPORTANT: Order matters - CECL-era concepts (post-2020) listed first
     XBRL_CONCEPTS = {
         "total_loans": [
+            # CECL-era (2020+) - most banks use these now
+            ("us-gaap", "FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss"),
+            ("us-gaap", "FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss"),
+            # Pre-CECL fallbacks
             ("us-gaap", "LoansAndLeasesReceivableNetReportedAmount"),
             ("us-gaap", "LoansAndLeasesReceivableNetOfDeferredIncome"),
-            ("us-gaap", "FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss"),
+            ("us-gaap", "LoansReceivableNet"),
         ],
         "allowance": [
+            # CECL-era
             ("us-gaap", "FinancingReceivableAllowanceForCreditLosses"),
+            # Pre-CECL
             ("us-gaap", "AllowanceForLoanAndLeaseLosses"),
             ("us-gaap", "LoansAndLeasesReceivableAllowance"),
         ],
         "provisions": [
+            # CECL-era
+            ("us-gaap", "ProvisionForCreditLosses"),
+            # Pre-CECL
             ("us-gaap", "ProvisionForLoanLeaseAndOtherLosses"),
             ("us-gaap", "ProvisionForLoanLossesExpensed"),
-            ("us-gaap", "ProvisionForCreditLosses"),
         ],
         "npl": [
             ("us-gaap", "FinancingReceivableRecordedInvestmentNonaccrualStatus"),
+            ("us-gaap", "FinancingReceivable30To59DaysPastDue"),
             ("us-gaap", "LoansAndLeasesReceivableNonperforming"),
         ],
         "net_charge_offs": [
-            ("us-gaap", "AllowanceForLoanAndLeaseLossesWriteOffsNet"),
             ("us-gaap", "FinancingReceivableAllowanceForCreditLossesWriteOffs"),
+            ("us-gaap", "AllowanceForLoanAndLeaseLossesWriteOffsNet"),
         ],
         "total_assets": [
             ("us-gaap", "Assets"),
