@@ -540,6 +540,26 @@ class BankDataCollector:
             .alias("avg_loans")
         )
 
+        # Derive provisions if missing but allowance and net_charge_offs available
+        # Formula: Provision = (Ending Allowance - Beginning Allowance) + Net Charge-offs
+        if "provisions" in result.columns and "allowance" in result.columns:
+            # Calculate derived provisions
+            derived_prov = (
+                (pl.col("allowance") - pl.col("allowance").shift(1).over("ticker"))
+                + pl.col("net_charge_offs").fill_null(0)
+            )
+            # Fill null provisions with derived values
+            result = result.with_columns(
+                pl.when(pl.col("provisions").is_null())
+                .then(derived_prov)
+                .otherwise(pl.col("provisions"))
+                .alias("provisions")
+            )
+            # Add flag indicating whether provision was derived
+            result = result.with_columns(
+                pl.col("provisions").is_not_null().alias("has_provisions")
+            )
+
         # Provision rate: Provisions / Average Loans
         if "provisions" in result.columns and "avg_loans" in result.columns:
             result = result.with_columns(
