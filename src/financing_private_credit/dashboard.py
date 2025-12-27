@@ -30,6 +30,167 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Professional finance-style CSS
+st.markdown("""
+<style>
+    /* Main theme colors - professional finance blue */
+    :root {
+        --primary-color: #1a365d;
+        --secondary-color: #2c5282;
+        --accent-color: #3182ce;
+        --bg-light: #f7fafc;
+        --border-color: #e2e8f0;
+        --text-primary: #1a202c;
+        --text-secondary: #4a5568;
+    }
+
+    /* Clean header styling */
+    .main .block-container {
+        padding-top: 2rem;
+        max-width: 1400px;
+    }
+
+    /* Metric cards styling */
+    [data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: var(--primary-color);
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: var(--bg-light);
+        padding: 0.5rem;
+        border-radius: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        border-radius: 6px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff;
+        color: var(--primary-color);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Headers */
+    h1 {
+        color: var(--primary-color);
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    h2, h3 {
+        color: var(--secondary-color);
+        font-weight: 600;
+    }
+
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: var(--bg-light);
+        border-right: 1px solid var(--border-color);
+    }
+
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 {
+        color: var(--primary-color);
+        font-size: 1rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Dataframe styling */
+    .stDataFrame {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* Expander styling for methodology sections */
+    .streamlit-expanderHeader {
+        background-color: var(--bg-light);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font-weight: 500;
+        color: var(--secondary-color);
+    }
+
+    .streamlit-expanderContent {
+        border: 1px solid var(--border-color);
+        border-top: none;
+        border-radius: 0 0 6px 6px;
+        background-color: #ffffff;
+    }
+
+    /* Info/warning boxes */
+    .stAlert {
+        border-radius: 8px;
+        border-left: 4px solid var(--accent-color);
+    }
+
+    /* Divider */
+    hr {
+        border-color: var(--border-color);
+        margin: 2rem 0;
+    }
+
+    /* Methodology box styling */
+    .methodology-box {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #3182ce;
+        border-radius: 4px;
+        padding: 1rem;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+    }
+
+    .methodology-box h4 {
+        color: #1a365d;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    .methodology-box code {
+        background-color: #edf2f7;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.85rem;
+    }
+
+    /* Footer styling */
+    .footer {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        text-align: center;
+        padding: 2rem 0;
+        border-top: 1px solid var(--border-color);
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_bank_data(start_date: str = "2015-01-01") -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -607,16 +768,17 @@ def create_metrics_comparison(panel: pl.DataFrame) -> alt.Chart:
 
 def main():
     """Main dashboard application."""
-    st.title("📊 Credit Boom Leading Indicator Dashboard")
+    st.title("Credit Boom Leading Indicator Dashboard")
     st.markdown("""
-    *Based on NY Fed Staff Report 1111: Financing Private Credit methodology*
-
-    This dashboard monitors bank credit risk using real SEC EDGAR data and the
-    Lending Intensity Score (LIS) framework to identify early warning signals.
-    """)
+    <div style="color: #4a5568; font-size: 0.95rem; margin-bottom: 1.5rem;">
+    Based on <strong>NY Fed Staff Report 1111: Financing Private Credit</strong> methodology.
+    Monitors bank credit risk using real SEC EDGAR data and the Lending Intensity Score (LIS)
+    framework to identify early warning signals of credit stress.
+    </div>
+    """, unsafe_allow_html=True)
 
     # Sidebar
-    st.sidebar.header("⚙️ Settings")
+    st.sidebar.header("Settings")
 
     start_year = st.sidebar.slider(
         "Start Year",
@@ -641,7 +803,7 @@ def main():
     # Bank selection
     available_banks = sorted(panel["ticker"].unique().to_list())
 
-    st.sidebar.header("🏦 Bank Selection")
+    st.sidebar.header("Bank Selection")
     select_all = st.sidebar.checkbox("Select All Banks", value=True)
 
     if select_all:
@@ -663,12 +825,12 @@ def main():
 
     # Main content tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📈 Overview",
-        "🎯 LIS Analysis",
-        "⚠️ Early Warnings",
-        "📡 Nowcast (Weekly)",
-        "🔮 Forecasts",
-        "📋 Data Quality"
+        "Overview",
+        "LIS Analysis",
+        "Early Warnings",
+        "Nowcast (Weekly)",
+        "Forecasts",
+        "Data Quality"
     ])
 
     # Tab 1: Overview
@@ -728,12 +890,64 @@ def main():
         st.header("Lending Intensity Score (LIS) Analysis")
 
         st.markdown("""
-        **LIS = (Bank Loan Growth - System Average) / System Std Dev**
-
-        - **LIS > 1.5**: Aggressive lending relative to peers (elevated risk)
-        - **LIS < -1.5**: Conservative lending relative to peers
-        - **Cumulative LIS (12Q)**: Sustained deviation indicates persistent risk build-up
+        The Lending Intensity Score measures how aggressively each bank is lending relative to its peers.
+        This is the core metric from the NY Fed Staff Report 1111 methodology.
         """)
+
+        # LIS Methodology expander
+        with st.expander("📖 LIS Methodology & Calculation (Click to Expand)", expanded=False):
+            st.markdown("""
+            ### Formula
+
+            ```
+            LIS(bank, t) = (Loan_Growth(bank, t) - System_Average(t)) / System_StdDev(t)
+            ```
+
+            Where:
+            - `Loan_Growth(bank, t)` = YoY loan growth for the bank at time t
+            - `System_Average(t)` = Cross-sectional mean of loan growth across all banks at time t
+            - `System_StdDev(t)` = Cross-sectional standard deviation at time t
+
+            ---
+
+            ### Interpretation
+
+            | LIS Value | Interpretation | Risk Level |
+            |-----------|----------------|------------|
+            | > 2.0 | Highly aggressive lending | High Risk |
+            | 1.5 to 2.0 | Aggressive lending | Elevated |
+            | 1.0 to 1.5 | Above-average lending | Moderate |
+            | -1.0 to 1.0 | Normal lending | Normal |
+            | < -1.5 | Conservative lending | Low Risk |
+
+            ---
+
+            ### Cumulative LIS (12-Quarter Rolling Sum)
+
+            ```
+            Cumulative_LIS(bank, t) = SUM(LIS(bank, t-11:t))
+            ```
+
+            A high cumulative LIS indicates sustained aggressive lending, which research shows
+            is a stronger predictor of future credit losses than point-in-time LIS.
+
+            ---
+
+            ### Data Source
+
+            - **Loan data**: SEC EDGAR XBRL filings (quarterly, ~45-day lag)
+            - **XBRL Concepts**: `FinancingReceivable*`, `LoansAndLeases*`, `NotesReceivable*`
+            - **Growth calculation**: `(Loans(t) / Loans(t-4Q) - 1) × 100`
+
+            ---
+
+            ### Implementation Notes
+
+            - System statistics are computed **cross-sectionally** (across banks at each date)
+            - Minimum 3 banks required per period for meaningful statistics
+            - Banks with missing data are excluded from system calculations
+            - Standard deviation floor of 0.01% to prevent division by zero
+            """)
 
         if lis_data.height > 0 and "lis" in lis_data.columns:
             # LIS time series
@@ -764,7 +978,7 @@ def main():
 
     # Tab 3: Early Warnings
     with tab3:
-        st.header("⚠️ Early Warning Signals")
+        st.header("Early Warning Signals")
 
         st.markdown("""
         Banks are flagged based on their Lending Intensity Score:
@@ -833,18 +1047,78 @@ def main():
 
     # Tab 4: Nowcast (Weekly Data)
     with tab4:
-        st.header("📡 Weekly Credit Nowcast")
+        st.header("Weekly Credit Nowcast")
 
         st.markdown("""
-        **High-frequency monitoring using Federal Reserve H.8 weekly bank credit data.**
-
-        This tab provides real-time credit conditions using:
-        - Weekly Total Loans & Leases (updated every Friday)
-        - Credit component breakdown (C&I, Consumer, Real Estate)
-        - Financial conditions indicators (NFCI, credit spreads)
-
-        *Data refreshes every 15 minutes when dashboard is active.*
+        High-frequency monitoring using Federal Reserve H.8 weekly bank credit data.
+        All methodology is documented below for full transparency and auditability.
         """)
+
+        # Methodology Documentation Section
+        with st.expander("📖 Methodology & Data Sources (Click to Expand)", expanded=False):
+            st.markdown("""
+            ### Data Sources
+
+            | Data | Source | Frequency | Series ID | Update Schedule |
+            |------|--------|-----------|-----------|-----------------|
+            | Total Loans & Leases | Federal Reserve H.8 | Weekly | `TOTLL` | Every Friday |
+            | C&I Loans | Federal Reserve H.8 | Weekly | `BUSLOANS` | Every Friday |
+            | Consumer Loans | Federal Reserve H.8 | Weekly | `CONSUMER` | Every Friday |
+            | Real Estate Loans | Federal Reserve H.8 | Weekly | `REALLN` | Every Friday |
+            | Financial Conditions | Chicago Fed | Weekly | `NFCI` | Wednesday |
+            | HY Credit Spread | ICE BofA | Daily | `BAMLH0A0HYM2` | Daily |
+
+            ---
+
+            ### Growth Rate Calculation
+
+            **Year-over-Year Growth** is computed as:
+
+            ```
+            YoY_Growth(t) = (Value(t) / Value(t-52 weeks) - 1) × 100
+            ```
+
+            - Uses 52-week lag for weekly data to capture true annual change
+            - Handles seasonal patterns inherently (same week comparison)
+            - Missing values are forward-filled before calculation
+
+            ---
+
+            ### Financial Conditions Interpretation
+
+            **NFCI (National Financial Conditions Index)**:
+            - `NFCI > 0`: Tighter-than-average financial conditions
+            - `NFCI < 0`: Looser-than-average financial conditions
+            - Historical mean is 0 by construction
+
+            **High Yield Spread Thresholds**:
+            | Spread (bps) | Interpretation |
+            |--------------|----------------|
+            | > 400 | Tight conditions (credit stress) |
+            | 300 - 400 | Normal conditions |
+            | < 300 | Loose conditions (risk-on) |
+
+            ---
+
+            ### Nowcast vs. Quarterly SEC Data
+
+            This weekly data serves as a **leading indicator** for the quarterly SEC EDGAR data:
+
+            1. **H.8 Data**: Aggregate bank credit, updated weekly (2-day lag)
+            2. **SEC EDGAR**: Individual bank filings, quarterly (45-day lag after quarter-end)
+
+            The H.8 nowcast helps anticipate trends before quarterly filings are available.
+            Note: H.8 is aggregate data across all commercial banks; SEC data is individual bank-level.
+
+            ---
+
+            ### Limitations & Caveats
+
+            - H.8 data covers all US commercial banks (not just the 10 monitored banks)
+            - Weekly data can be noisy; focus on trends, not single-week moves
+            - Financial conditions indices are lagging indicators of credit conditions
+            - FRED API rate limits may affect data freshness (15-minute cache)
+            """)
 
         # Load weekly H.8 data
         with st.spinner("Loading weekly H.8 data from FRED..."):
@@ -855,7 +1129,9 @@ def main():
             latest_weekly = weekly_data.filter(pl.col("total_bank_credit_growth").is_not_null()).tail(1)
 
             if latest_weekly.height > 0:
-                col1, col2, col3 = st.columns(3)
+                st.subheader("Current Readings")
+
+                col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
                     latest_growth = latest_weekly["total_bank_credit_growth"][0]
@@ -884,6 +1160,39 @@ def main():
                                 delta="accelerating" if delta > 0 else "decelerating",
                                 delta_color="normal"
                             )
+
+                with col4:
+                    # Data staleness indicator
+                    from datetime import datetime
+                    days_old = (datetime.now().date() - latest_date.date()).days if hasattr(latest_date, 'date') else 0
+                    freshness = "Fresh" if days_old <= 7 else "Stale" if days_old > 14 else "Recent"
+                    st.metric("Data Freshness", freshness, delta=f"{days_old} days old")
+
+                # Inline calculation trace
+                with st.expander("🔍 Calculation Details for Current Reading"):
+                    if "TOTLL" in latest_weekly.columns:
+                        current_value = latest_weekly["TOTLL"][0]
+                        # Get value from 52 weeks ago
+                        if weekly_data.height > 52:
+                            historical = weekly_data.filter(pl.col("TOTLL").is_not_null())
+                            if historical.height > 52:
+                                year_ago_row = historical.tail(53).head(1)
+                                if year_ago_row.height > 0:
+                                    year_ago_value = year_ago_row["TOTLL"][0]
+                                    year_ago_date = year_ago_row["date"][0]
+
+                                    st.markdown(f"""
+                                    **Total Loans & Leases (TOTLL) YoY Growth Calculation:**
+
+                                    | Variable | Value | Date |
+                                    |----------|-------|------|
+                                    | Current Value | ${current_value:,.0f}M | {latest_date.strftime('%Y-%m-%d')} |
+                                    | Year-Ago Value | ${year_ago_value:,.0f}M | {year_ago_date.strftime('%Y-%m-%d')} |
+
+                                    **Formula:** `((Current / Year-Ago) - 1) × 100`
+
+                                    **Calculation:** `(({current_value:,.0f} / {year_ago_value:,.0f}) - 1) × 100 = {latest_growth:.2f}%`
+                                    """)
 
             st.divider()
 
@@ -940,6 +1249,52 @@ def main():
                     cond_date = conditions.get("date")
                     if cond_date:
                         st.metric("As of", cond_date.strftime("%Y-%m-%d") if hasattr(cond_date, 'strftime') else str(cond_date))
+
+                # Financial conditions methodology trace
+                with st.expander("🔍 Financial Conditions Calculation Details"):
+                    st.markdown("""
+                    **Overall Assessment Logic:**
+
+                    The overall financial conditions assessment is determined by a simple voting mechanism:
+
+                    ```python
+                    if count(tight_indicators) > count(loose_indicators):
+                        overall = "TIGHT"
+                    elif count(loose_indicators) > count(tight_indicators):
+                        overall = "LOOSE"
+                    else:
+                        overall = "NEUTRAL"
+                    ```
+
+                    **Individual Indicator Thresholds:**
+                    """)
+
+                    # Show actual values and thresholds
+                    threshold_data = []
+                    if "NFCI" in indicators and indicators["NFCI"].get("value") is not None:
+                        nfci_val = indicators["NFCI"]["value"]
+                        threshold_data.append({
+                            "Indicator": "NFCI",
+                            "Current Value": f"{nfci_val:.3f}",
+                            "Threshold": "0.00",
+                            "Rule": "> 0 = Tight, < 0 = Loose",
+                            "Result": indicators["NFCI"].get("interpretation", "").upper()
+                        })
+
+                    if "HY_spread" in indicators and indicators["HY_spread"].get("value") is not None:
+                        hy_val = indicators["HY_spread"]["value"]
+                        threshold_data.append({
+                            "Indicator": "HY Spread",
+                            "Current Value": f"{hy_val:.0f} bps",
+                            "Threshold": "400 / 300 bps",
+                            "Rule": "> 400 = Tight, < 300 = Loose, else Normal",
+                            "Result": indicators["HY_spread"].get("interpretation", "").upper()
+                        })
+
+                    if threshold_data:
+                        import pandas as pd
+                        st.dataframe(pd.DataFrame(threshold_data), use_container_width=True, hide_index=True)
+
             else:
                 st.warning("Could not load financial conditions data.")
 
@@ -959,7 +1314,52 @@ def main():
 
     # Tab 5: Forecasts
     with tab5:
-        st.header("🔮 Provision Rate Forecasts")
+        st.header("Provision Rate Forecasts")
+
+        with st.expander("📖 Forecast Methodology", expanded=False):
+            st.markdown("""
+            ### Model Overview
+
+            Provision rate forecasts use a mean-reversion model with optional ARDL enhancements:
+
+            ---
+
+            ### Simple Mean-Reversion Forecast (Current Implementation)
+
+            ```
+            Forecast(t+h) = decay^h × Current + (1 - decay^h) × Historical_Mean
+            ```
+
+            Where:
+            - `decay = 0.9` (controls reversion speed)
+            - `h` = forecast horizon in quarters
+            - `Current` = latest observed provision rate
+            - `Historical_Mean` = bank-specific average provision rate
+
+            ---
+
+            ### ARDL Model (Advanced)
+
+            The Autoregressive Distributed Lag model, when fitted, uses:
+
+            ```
+            Provision(t) = α + Σ β_i × Provision(t-i) + Σ γ_j × LIS(t-j) + ε
+            ```
+
+            Where:
+            - AR lags: 4 quarters of own-provision history
+            - LIS lags: 4, 8, 12 quarters (captures lending intensity impact)
+            - Fixed effects: Bank-specific intercepts
+
+            ---
+
+            ### Interpretation
+
+            - **Dashed line**: Forecast (out-of-sample projection)
+            - **Solid line**: Historical actual values
+            - Forecasts converge to historical mean over time
+            - Higher current provisions → expect gradual normalization
+            """)
 
         forecast_bank = st.selectbox(
             "Select Bank for Forecast",
@@ -974,7 +1374,7 @@ def main():
             value=8
         )
 
-        with st.spinner("Fitting ARDL model..."):
+        with st.spinner("Fitting forecast model..."):
             model_metrics, forecasts = fit_ardl_model(panel, forecast_horizon)
 
         if model_metrics:
@@ -985,31 +1385,82 @@ def main():
                 st.altair_chart(forecast_chart, use_container_width=True)
 
             with col2:
-                st.subheader("Model Metrics")
+                st.subheader("Model Info")
                 if model_metrics.get("r_squared"):
                     st.metric("R-squared", f"{model_metrics['r_squared']:.3f}")
+                elif model_metrics.get("error"):
+                    st.info("Using simple mean-reversion forecast")
 
                 st.markdown("""
-                **ARDL Model**
-
-                Autoregressive Distributed Lag model with:
-                - 4 lags of provision rate
-                - Macro indicators (GDP growth, credit spreads)
-                - Bank fixed effects
+                **Forecast Settings**
+                - Mean-reversion decay: 0.9
+                - Historical mean: Bank-specific
+                - Horizon: Quarterly steps
                 """)
         else:
             st.info("Forecast model could not be fitted. Ensure sufficient data is available.")
 
     # Tab 6: Data Quality
     with tab6:
-        st.header("📋 Data Quality Summary")
+        st.header("Data Quality Summary")
 
         st.markdown("""
-        Data is sourced from SEC EDGAR XBRL filings. Status indicates:
-        - **COMPLETE**: All metrics (loans, allowance, provisions) current
-        - **COMPLETE_NO_PROV**: Loans/allowance current, provisions derived
-        - **STALE_DATA**: Data not current (e.g., WFC data stops at Q2 2022)
+        Data is sourced from SEC EDGAR XBRL filings. Each bank's status reflects data completeness and currency.
         """)
+
+        with st.expander("📖 SEC EDGAR Data Methodology", expanded=False):
+            st.markdown("""
+            ### Data Source
+
+            All quarterly bank data is fetched directly from **SEC EDGAR XBRL API**:
+            - **Endpoint**: `data.sec.gov/api/xbrl/companyfacts/`
+            - **Format**: JSON with standardized XBRL taxonomy concepts
+            - **Coverage**: 10-K and 10-Q filings from major US banks
+
+            ---
+
+            ### XBRL Concept Mappings
+
+            Different banks use different XBRL concepts for the same metrics. Our system tries
+            multiple concepts in priority order and selects the one with the most recent data:
+
+            | Metric | Primary XBRL Concepts |
+            |--------|----------------------|
+            | Total Loans | `FinancingReceivableExcludingAccruedInterest*`, `LoansAndLeasesReceivable*`, `NotesReceivable*` |
+            | Allowance | `FinancingReceivableAllowanceForCreditLoss*`, `AllowanceForLoanAndLeaseLosses*` |
+            | Provisions | `ProvisionForCreditLosses`, `ProvisionForLoanLossesExpensed`, `ProvisionForLoanLeaseAndOtherLosses` |
+            | Net Charge-offs | `FinancingReceivableExcludingAccruedInterestWriteoff*`, `AllowanceForLoanAndLeaseLossesWriteoffsNet` |
+
+            ---
+
+            ### Provision Derivation
+
+            For banks without direct provision data (BAC, MS, PNC), provisions are derived using the accounting identity:
+
+            ```
+            Provision = (Ending Allowance - Beginning Allowance) + Net Charge-offs
+            ```
+
+            This formula follows from the allowance rollforward schedule in bank 10-Ks.
+
+            ---
+
+            ### Data Status Definitions
+
+            | Status | Meaning | Action |
+            |--------|---------|--------|
+            | **COMPLETE** | All metrics available and current (within 6 months) | Full analysis available |
+            | **COMPLETE_NO_PROV** | Loans/allowance current, provisions derived | Derived provisions used |
+            | **STALE_DATA** | Data not current (SEC filing gap) | Limited analysis |
+
+            ---
+
+            ### Known Limitations
+
+            - **WFC**: SEC EDGAR data incomplete after Q2 2022 (only provisions available through 2025)
+            - **Some banks**: Use non-standard XBRL concepts that may not be captured
+            - **Data lag**: ~45 days after quarter-end for 10-Q filings
+            """)
 
         if quality_summary.height > 0:
             display_cols = [
@@ -1041,12 +1492,16 @@ def main():
 
     # Footer
     st.divider()
-    st.markdown("""
-    ---
-    **Credit Boom Leading Indicator Dashboard** | Based on NY Fed Staff Report 1111
-
-    *Data refreshes hourly. Last updated: {}*
-    """.format(date.today().strftime("%Y-%m-%d")))
+    st.markdown(f"""
+    <div class="footer">
+        <strong>Credit Boom Leading Indicator Dashboard</strong><br>
+        Based on NY Fed Staff Report 1111: Financing Private Credit<br><br>
+        <span style="font-size: 0.8rem;">
+        SEC EDGAR data refreshes hourly | Weekly H.8 data refreshes every 15 minutes<br>
+        Last updated: {date.today().strftime("%Y-%m-%d")}
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
