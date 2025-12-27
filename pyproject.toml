@@ -18,6 +18,7 @@ dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.11.0",
     "statsmodels>=0.14.0",
+    "streamlit>=1.28.0",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,9 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+
+[project.scripts]
+credit-dashboard = "financing_private_credit.dashboard:main"
 
 [build-system]
 requires = ["hatchling"]
