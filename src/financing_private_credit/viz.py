@@ -444,6 +444,348 @@ def create_dashboard(
     return alt.vconcat(*charts).properties(title=title)
 
 
+# =============================================================================
+# Credit Boom Leading Indicator Visualizations
+# =============================================================================
+
+
+def chart_lis_heatmap(
+    data: pl.DataFrame,
+    date_col: str = "date",
+    ticker_col: str = "ticker",
+    lis_col: str = "lis",
+    title: str = "Lending Intensity Score Heatmap",
+) -> alt.Chart:
+    """
+    Create heatmap of LIS across banks and time.
+
+    Red = aggressive lending (LIS > 1)
+    Blue = conservative lending (LIS < -1)
+
+    Args:
+        data: DataFrame with date, ticker, lis columns
+        date_col: Name of date column
+        ticker_col: Name of ticker column
+        lis_col: Name of LIS column
+        title: Chart title
+
+    Returns:
+        Altair Chart object
+    """
+    chart = alt.Chart(data.to_pandas()).mark_rect().encode(
+        x=alt.X(f"{date_col}:T", title="Date"),
+        y=alt.Y(f"{ticker_col}:N", title="Bank"),
+        color=alt.Color(
+            f"{lis_col}:Q",
+            title="LIS (SDs)",
+            scale=alt.Scale(
+                domain=[-2, 0, 2],
+                range=["#2166ac", "#f7f7f7", "#b2182b"],
+            ),
+        ),
+        tooltip=[
+            alt.Tooltip(f"{date_col}:T", title="Date"),
+            alt.Tooltip(f"{ticker_col}:N", title="Bank"),
+            alt.Tooltip(f"{lis_col}:Q", title="LIS", format=".2f"),
+        ],
+    ).properties(
+        width=700,
+        height=300,
+        title=title,
+    )
+
+    return chart
+
+
+def chart_lis_timeseries(
+    data: pl.DataFrame,
+    date_col: str = "date",
+    ticker_col: str = "ticker",
+    lis_col: str = "lis",
+    title: str = "Lending Intensity Score Over Time",
+) -> alt.Chart:
+    """
+    Create line chart of LIS for each bank over time.
+
+    Args:
+        data: DataFrame with date, ticker, lis columns
+        date_col: Name of date column
+        ticker_col: Name of ticker column
+        lis_col: Name of LIS column
+        title: Chart title
+
+    Returns:
+        Altair Chart object
+    """
+    base = alt.Chart(data.to_pandas())
+
+    lines = base.mark_line(strokeWidth=2).encode(
+        x=alt.X(f"{date_col}:T", title="Date"),
+        y=alt.Y(f"{lis_col}:Q", title="LIS (Standard Deviations)"),
+        color=alt.Color(f"{ticker_col}:N", title="Bank"),
+        tooltip=[
+            alt.Tooltip(f"{date_col}:T", title="Date"),
+            alt.Tooltip(f"{ticker_col}:N", title="Bank"),
+            alt.Tooltip(f"{lis_col}:Q", title="LIS", format=".2f"),
+        ],
+    )
+
+    # Add threshold lines at +/- 1 SD
+    thresholds = alt.Chart(
+        pl.DataFrame({"y": [-1, 0, 1, 2]}).to_pandas()
+    ).mark_rule(strokeDash=[4, 4], opacity=0.5).encode(
+        y="y:Q",
+        color=alt.value("gray"),
+    )
+
+    # Add annotations for threshold levels
+    threshold_labels = alt.Chart(
+        pl.DataFrame({
+            "y": [1, 2],
+            "label": ["Warning (+1 SD)", "Alert (+2 SD)"]
+        }).to_pandas()
+    ).mark_text(align="left", dx=5, dy=-5).encode(
+        y="y:Q",
+        text="label:N",
+        color=alt.value("gray"),
+    )
+
+    chart = (lines + thresholds).properties(
+        width=700,
+        height=400,
+        title=title,
+    )
+
+    return chart
+
+
+def chart_provision_forecast(
+    data: pl.DataFrame,
+    date_col: str = "forecast_date",
+    ticker_col: str = "ticker",
+    forecast_col: str = "point_forecast",
+    lower_col: str = "ci_lower",
+    upper_col: str = "ci_upper",
+    title: str = "Provision Rate Forecasts (3-4 Year Horizon)",
+) -> alt.Chart:
+    """
+    Create chart showing provision forecasts with confidence intervals.
+
+    Args:
+        data: DataFrame with forecast data
+        date_col: Name of forecast date column
+        ticker_col: Name of ticker column
+        forecast_col: Name of point forecast column
+        lower_col: Name of CI lower bound column
+        upper_col: Name of CI upper bound column
+        title: Chart title
+
+    Returns:
+        Altair Chart object
+    """
+    base = alt.Chart(data.to_pandas())
+
+    # Confidence interval band
+    band = base.mark_area(opacity=0.3).encode(
+        x=alt.X(f"{date_col}:T", title="Date"),
+        y=alt.Y(f"{lower_col}:Q", title=""),
+        y2=alt.Y2(f"{upper_col}:Q"),
+        color=alt.Color(f"{ticker_col}:N", legend=None),
+    )
+
+    # Point forecast line
+    line = base.mark_line(strokeWidth=2).encode(
+        x=alt.X(f"{date_col}:T"),
+        y=alt.Y(f"{forecast_col}:Q", title="Provision Rate (%)"),
+        color=alt.Color(f"{ticker_col}:N", title="Bank"),
+        tooltip=[
+            alt.Tooltip(f"{date_col}:T", title="Date"),
+            alt.Tooltip(f"{ticker_col}:N", title="Bank"),
+            alt.Tooltip(f"{forecast_col}:Q", title="Forecast", format=".2f"),
+        ],
+    )
+
+    chart = (band + line).properties(
+        width=700,
+        height=400,
+        title=title,
+    )
+
+    return chart
+
+
+def chart_early_warning_dashboard(
+    signals: pl.DataFrame,
+    title: str = "Credit Boom Early Warning Dashboard",
+) -> alt.VConcatChart:
+    """
+    Create comprehensive early warning dashboard.
+
+    Args:
+        signals: DataFrame with LIS and risk signals for each bank
+        title: Dashboard title
+
+    Returns:
+        Altair compound chart
+    """
+    charts = []
+
+    # 1. Current LIS bar chart (ranked by risk)
+    if "lis" in signals.columns and "ticker" in signals.columns:
+        bar_data = signals.select(["ticker", "lis", "risk_classification"]).drop_nulls()
+
+        lis_bars = alt.Chart(bar_data.to_pandas()).mark_bar().encode(
+            y=alt.Y("ticker:N", sort="-x", title="Bank"),
+            x=alt.X("lis:Q", title="Lending Intensity Score (SDs)"),
+            color=alt.Color(
+                "risk_classification:N",
+                title="Risk Level",
+                scale=alt.Scale(
+                    domain=["LOW", "MEDIUM", "HIGH"],
+                    range=["#2ca02c", "#ff7f0e", "#d62728"],
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("ticker:N", title="Bank"),
+                alt.Tooltip("lis:Q", title="LIS", format=".2f"),
+                alt.Tooltip("risk_classification:N", title="Risk"),
+            ],
+        ).properties(
+            width=400,
+            height=250,
+            title="Current Lending Intensity by Bank",
+        )
+
+        charts.append(lis_bars)
+
+    # 2. Cumulative LIS (sustained exposure)
+    if "lis_cumulative_12q" in signals.columns:
+        cum_data = signals.select(["ticker", "lis_cumulative_12q", "risk_classification"]).drop_nulls()
+
+        cum_bars = alt.Chart(cum_data.to_pandas()).mark_bar().encode(
+            y=alt.Y("ticker:N", sort="-x", title="Bank"),
+            x=alt.X("lis_cumulative_12q:Q", title="Cumulative LIS (12 Quarters)"),
+            color=alt.Color(
+                "risk_classification:N",
+                legend=None,
+                scale=alt.Scale(
+                    domain=["LOW", "MEDIUM", "HIGH"],
+                    range=["#2ca02c", "#ff7f0e", "#d62728"],
+                ),
+            ),
+        ).properties(
+            width=400,
+            height=250,
+            title="Sustained Lending Intensity (3 Years)",
+        )
+
+        charts.append(cum_bars)
+
+    # 3. Expected provision impact
+    if "expected_provision_impact_bp" in signals.columns:
+        impact_data = signals.select(
+            ["ticker", "expected_provision_impact_bp", "risk_classification"]
+        ).drop_nulls()
+
+        impact_bars = alt.Chart(impact_data.to_pandas()).mark_bar().encode(
+            y=alt.Y("ticker:N", sort="-x", title="Bank"),
+            x=alt.X(
+                "expected_provision_impact_bp:Q",
+                title="Expected Provision Impact (bp)",
+            ),
+            color=alt.Color(
+                "risk_classification:N",
+                legend=None,
+                scale=alt.Scale(
+                    domain=["LOW", "MEDIUM", "HIGH"],
+                    range=["#2ca02c", "#ff7f0e", "#d62728"],
+                ),
+            ),
+        ).properties(
+            width=400,
+            height=250,
+            title="Projected Provision Increase (3-4 Years)",
+        )
+
+        charts.append(impact_bars)
+
+    if not charts:
+        return alt.Chart().mark_text().encode(text=alt.value("No data available"))
+
+    # Combine charts
+    if len(charts) >= 2:
+        row1 = alt.hconcat(charts[0], charts[1]) if len(charts) >= 2 else charts[0]
+        if len(charts) >= 3:
+            dashboard = alt.vconcat(row1, charts[2])
+        else:
+            dashboard = row1
+    else:
+        dashboard = charts[0]
+
+    return dashboard.properties(title=title)
+
+
+def chart_historical_validation(
+    actual: pl.DataFrame,
+    predicted: pl.DataFrame,
+    date_col: str = "date",
+    actual_col: str = "provision_rate",
+    predicted_col: str = "predicted_provision",
+    title: str = "Model Validation: Actual vs. Predicted Provisions",
+) -> alt.Chart:
+    """
+    Create chart comparing actual vs predicted provisions.
+
+    Args:
+        actual: DataFrame with actual provision rates
+        predicted: DataFrame with predicted rates
+        date_col: Name of date column
+        actual_col: Name of actual column
+        predicted_col: Name of predicted column
+        title: Chart title
+
+    Returns:
+        Altair Chart object
+    """
+    # Merge actual and predicted
+    if "ticker" in actual.columns and "ticker" in predicted.columns:
+        # Panel data
+        merged = actual.join(predicted, on=["date", "ticker"], how="inner")
+    else:
+        merged = actual.join(predicted, on="date", how="inner")
+
+    df_long = merged.unpivot(
+        index=[date_col],
+        on=[actual_col, predicted_col],
+        variable_name="series",
+        value_name="rate",
+    )
+
+    chart = alt.Chart(df_long.to_pandas()).mark_line().encode(
+        x=alt.X(f"{date_col}:T", title="Date"),
+        y=alt.Y("rate:Q", title="Provision Rate (%)"),
+        color=alt.Color(
+            "series:N",
+            title="",
+            scale=alt.Scale(
+                domain=[actual_col, predicted_col],
+                range=["#1f77b4", "#ff7f0e"],
+            ),
+        ),
+        strokeDash=alt.condition(
+            alt.datum.series == predicted_col,
+            alt.value([4, 4]),
+            alt.value([0]),
+        ),
+    ).properties(
+        width=700,
+        height=400,
+        title=title,
+    )
+
+    return chart
+
+
 if __name__ == "__main__":
     import numpy as np
 
