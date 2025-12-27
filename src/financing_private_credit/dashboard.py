@@ -19,6 +19,7 @@ import streamlit as st
 
 from .bank_data import BankDataCollector, TARGET_BANKS
 from .leading_indicator import LendingIntensityScore, ARDLModel
+from .nowcast import CreditNowcaster, FinancialConditionsMonitor
 
 
 # Page configuration
@@ -142,6 +143,141 @@ def fit_ardl_model(panel: pl.DataFrame, forecast_horizon: int = 12) -> tuple[dic
         # Fallback to simple forecast
         forecasts = generate_simple_forecast(panel, forecast_horizon)
         return {"error": str(e)}, forecasts
+
+
+@st.cache_data(ttl=900)  # Cache for 15 minutes (more frequent for nowcasting)
+def load_nowcast_data() -> tuple[pl.DataFrame, dict]:
+    """Load high-frequency nowcast data from FRED."""
+    try:
+        nowcaster = CreditNowcaster(lookback_years=5)
+
+        # Fetch weekly proxy data
+        proxy_data = nowcaster.fetch_proxy_data()
+
+        # Compute credit growth nowcast
+        growth_nowcast = nowcaster.compute_credit_growth_nowcast()
+
+        # Get financial conditions
+        monitor = FinancialConditionsMonitor()
+        conditions = monitor.assess_credit_environment()
+
+        return growth_nowcast, conditions
+    except Exception as e:
+        return pl.DataFrame(), {"status": "error", "message": str(e)}
+
+
+@st.cache_data(ttl=900)  # 15-minute cache
+def load_weekly_h8_data() -> pl.DataFrame:
+    """Load weekly H.8 bank credit data for monitoring."""
+    try:
+        from .data import FREDDataFetcher
+        fetcher = FREDDataFetcher()
+
+        # Weekly H.8 series
+        h8_series = ["TOTLL", "BUSLOANS", "CONSUMER", "REALLN"]
+
+        # Fetch last 2 years of weekly data
+        from datetime import datetime, timedelta
+        start_date = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
+
+        data = fetcher.fetch_multiple_series(h8_series, start_date=start_date)
+
+        if data.height > 0:
+            # Compute YoY growth for each series
+            for col in h8_series:
+                if col in data.columns:
+                    data = data.with_columns(
+                        ((pl.col(col) / pl.col(col).shift(52) - 1) * 100)
+                        .alias(f"{col}_growth_yoy")
+                    )
+
+            # Compute total bank credit growth
+            if "TOTLL" in data.columns:
+                data = data.with_columns(
+                    ((pl.col("TOTLL") / pl.col("TOTLL").shift(52) - 1) * 100)
+                    .alias("total_bank_credit_growth")
+                )
+
+        return data
+    except Exception as e:
+        return pl.DataFrame()
+
+
+def create_weekly_credit_chart(weekly_data: pl.DataFrame) -> alt.Chart:
+    """Create weekly bank credit growth chart."""
+    if weekly_data.height == 0 or "total_bank_credit_growth" not in weekly_data.columns:
+        return alt.Chart().mark_text().encode(text=alt.value("No weekly data available"))
+
+    df = weekly_data.select(["date", "total_bank_credit_growth"]).drop_nulls().to_pandas()
+
+    if len(df) == 0:
+        return alt.Chart().mark_text().encode(text=alt.value("No weekly data available"))
+
+    chart = alt.Chart(df).mark_line(strokeWidth=2, color="#1f77b4").encode(
+        x=alt.X("date:T", title="Date"),
+        y=alt.Y("total_bank_credit_growth:Q", title="YoY Growth (%)"),
+        tooltip=["date:T", alt.Tooltip("total_bank_credit_growth:Q", format=".2f", title="Growth (%)")]
+    ).properties(
+        height=300,
+        title="Total Bank Credit Growth (Weekly H.8 Data)"
+    ).interactive()
+
+    # Add zero line
+    zero_line = alt.Chart(pl.DataFrame({"y": [0]}).to_pandas()).mark_rule(
+        strokeDash=[5, 5], color="gray"
+    ).encode(y="y:Q")
+
+    return chart + zero_line
+
+
+def create_credit_components_chart(weekly_data: pl.DataFrame) -> alt.Chart:
+    """Create chart showing credit components (C&I, Consumer, Real Estate)."""
+    if weekly_data.height == 0:
+        return alt.Chart().mark_text().encode(text=alt.value("No data available"))
+
+    growth_cols = ["BUSLOANS_growth_yoy", "CONSUMER_growth_yoy", "REALLN_growth_yoy"]
+    available = [c for c in growth_cols if c in weekly_data.columns]
+
+    if not available:
+        return alt.Chart().mark_text().encode(text=alt.value("No component data available"))
+
+    # Melt to long format
+    df = weekly_data.select(["date"] + available).drop_nulls()
+
+    # Rename for display
+    rename_map = {
+        "BUSLOANS_growth_yoy": "C&I Loans",
+        "CONSUMER_growth_yoy": "Consumer Loans",
+        "REALLN_growth_yoy": "Real Estate Loans"
+    }
+
+    records = []
+    for _, row in df.to_pandas().iterrows():
+        for col in available:
+            if col in rename_map:
+                records.append({
+                    "date": row["date"],
+                    "category": rename_map[col],
+                    "growth": row[col]
+                })
+
+    if not records:
+        return alt.Chart().mark_text().encode(text=alt.value("No data available"))
+
+    import pandas as pd
+    long_df = pd.DataFrame(records)
+
+    chart = alt.Chart(long_df).mark_line(strokeWidth=2).encode(
+        x=alt.X("date:T", title="Date"),
+        y=alt.Y("growth:Q", title="YoY Growth (%)"),
+        color=alt.Color("category:N", title="Loan Type"),
+        tooltip=["date:T", "category:N", alt.Tooltip("growth:Q", format=".2f")]
+    ).properties(
+        height=300,
+        title="Bank Credit Components Growth (Weekly)"
+    ).interactive()
+
+    return chart
 
 
 def generate_simple_forecast(panel: pl.DataFrame, horizon: int) -> pl.DataFrame:
@@ -526,10 +662,11 @@ def main():
         lis_data = compute_lis_scores(panel)
 
     # Main content tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📈 Overview",
         "🎯 LIS Analysis",
         "⚠️ Early Warnings",
+        "📡 Nowcast (Weekly)",
         "🔮 Forecasts",
         "📋 Data Quality"
     ])
@@ -694,8 +831,134 @@ def main():
         else:
             st.info("Early warning data not available.")
 
-    # Tab 4: Forecasts
+    # Tab 4: Nowcast (Weekly Data)
     with tab4:
+        st.header("📡 Weekly Credit Nowcast")
+
+        st.markdown("""
+        **High-frequency monitoring using Federal Reserve H.8 weekly bank credit data.**
+
+        This tab provides real-time credit conditions using:
+        - Weekly Total Loans & Leases (updated every Friday)
+        - Credit component breakdown (C&I, Consumer, Real Estate)
+        - Financial conditions indicators (NFCI, credit spreads)
+
+        *Data refreshes every 15 minutes when dashboard is active.*
+        """)
+
+        # Load weekly H.8 data
+        with st.spinner("Loading weekly H.8 data from FRED..."):
+            weekly_data = load_weekly_h8_data()
+
+        if weekly_data.height > 0:
+            # Latest reading
+            latest_weekly = weekly_data.filter(pl.col("total_bank_credit_growth").is_not_null()).tail(1)
+
+            if latest_weekly.height > 0:
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    latest_growth = latest_weekly["total_bank_credit_growth"][0]
+                    st.metric(
+                        "Total Bank Credit Growth (YoY)",
+                        f"{latest_growth:.2f}%",
+                        delta=None
+                    )
+
+                with col2:
+                    latest_date = latest_weekly["date"][0]
+                    st.metric("Latest Data", latest_date.strftime("%Y-%m-%d"))
+
+                with col3:
+                    # Compare to 4 weeks ago
+                    if weekly_data.height > 4:
+                        four_weeks_ago = weekly_data.filter(
+                            pl.col("total_bank_credit_growth").is_not_null()
+                        ).tail(5).head(1)
+                        if four_weeks_ago.height > 0:
+                            prev_growth = four_weeks_ago["total_bank_credit_growth"][0]
+                            delta = latest_growth - prev_growth
+                            st.metric(
+                                "4-Week Change",
+                                f"{delta:+.2f}pp",
+                                delta="accelerating" if delta > 0 else "decelerating",
+                                delta_color="normal"
+                            )
+
+            st.divider()
+
+            # Charts
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.subheader("Total Bank Credit Growth")
+                weekly_chart = create_weekly_credit_chart(weekly_data)
+                st.altair_chart(weekly_chart, use_container_width=True)
+
+            with col2:
+                st.subheader("Credit Components")
+                components_chart = create_credit_components_chart(weekly_data)
+                st.altair_chart(components_chart, use_container_width=True)
+
+            # Financial conditions
+            st.divider()
+            st.subheader("Financial Conditions Assessment")
+
+            with st.spinner("Loading financial conditions..."):
+                _, conditions = load_nowcast_data()
+
+            if conditions.get("status") != "error":
+                cond_cols = st.columns(4)
+
+                overall = conditions.get("overall", "unknown")
+                overall_emoji = {"tight": "🔴", "loose": "🟢", "neutral": "🟡"}.get(overall, "⚪")
+
+                with cond_cols[0]:
+                    st.metric("Overall Conditions", f"{overall_emoji} {overall.upper()}")
+
+                indicators = conditions.get("indicators", {})
+
+                if "NFCI" in indicators:
+                    nfci = indicators["NFCI"]
+                    with cond_cols[1]:
+                        st.metric(
+                            "NFCI",
+                            f"{nfci['value']:.2f}" if nfci.get('value') else "N/A",
+                            delta=nfci.get('interpretation', '').upper()
+                        )
+
+                if "HY_spread" in indicators:
+                    hy = indicators["HY_spread"]
+                    with cond_cols[2]:
+                        st.metric(
+                            "HY Spread (bps)",
+                            f"{hy['value']:.0f}" if hy.get('value') else "N/A",
+                            delta=hy.get('interpretation', '').upper()
+                        )
+
+                with cond_cols[3]:
+                    cond_date = conditions.get("date")
+                    if cond_date:
+                        st.metric("As of", cond_date.strftime("%Y-%m-%d") if hasattr(cond_date, 'strftime') else str(cond_date))
+            else:
+                st.warning("Could not load financial conditions data.")
+
+            # Recent weekly data table
+            st.divider()
+            st.subheader("Recent Weekly Data")
+
+            display_cols = ["date", "TOTLL", "total_bank_credit_growth"]
+            component_growth = ["BUSLOANS_growth_yoy", "CONSUMER_growth_yoy", "REALLN_growth_yoy"]
+            display_cols.extend([c for c in component_growth if c in weekly_data.columns])
+
+            recent = weekly_data.select([c for c in display_cols if c in weekly_data.columns]).tail(10)
+            st.dataframe(recent.to_pandas().round(2), use_container_width=True, hide_index=True)
+
+        else:
+            st.warning("Could not load weekly H.8 data. Check FRED API connection.")
+
+    # Tab 5: Forecasts
+    with tab5:
         st.header("🔮 Provision Rate Forecasts")
 
         forecast_bank = st.selectbox(
@@ -737,8 +1000,8 @@ def main():
         else:
             st.info("Forecast model could not be fitted. Ensure sufficient data is available.")
 
-    # Tab 5: Data Quality
-    with tab5:
+    # Tab 6: Data Quality
+    with tab6:
         st.header("📋 Data Quality Summary")
 
         st.markdown("""
