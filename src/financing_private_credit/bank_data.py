@@ -242,54 +242,91 @@ class BankDataCollector:
     """
 
     # XBRL concept mappings for key metrics
-    # IMPORTANT: Order matters - CECL-era concepts (post-2020) listed first
+    # IMPORTANT: Order matters - most common/preferred concepts listed first
+    #
+    # Bank-specific notes:
+    # - JPM, BAC, C, MS, USB, PNC, TFC: Use FinancingReceivable* concepts
+    # - COF: Uses FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss
+    # - GS: Uses NotesReceivableGross/Net for loans
+    # - WFC: SEC EDGAR data incomplete after Q2 2022 (provisions available, loans/allowance stop)
+    #
     XBRL_CONCEPTS = {
         "total_loans": [
             # CECL-era (2020+) - most banks use these now
             ("us-gaap", "FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss"),
             ("us-gaap", "FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss"),
+            # Investment banks (GS, some MS) use Notes Receivable
+            ("us-gaap", "NotesReceivableGross"),
+            ("us-gaap", "NotesReceivableNet"),
+            # Gross carrying amount (alternative)
+            ("us-gaap", "LoansAndLeasesReceivableGrossCarryingAmount"),
             # Pre-CECL fallbacks
             ("us-gaap", "LoansAndLeasesReceivableNetReportedAmount"),
             ("us-gaap", "LoansAndLeasesReceivableNetOfDeferredIncome"),
             ("us-gaap", "LoansReceivableNet"),
         ],
         "allowance": [
-            # CECL-era
+            # CECL-era - excluding accrued interest (most common for large banks)
+            ("us-gaap", "FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest"),
+            # CECL-era - standard
             ("us-gaap", "FinancingReceivableAllowanceForCreditLosses"),
+            # Collectively evaluated (some banks report this way)
+            ("us-gaap", "FinancingReceivableAllowanceForCreditLossesCollectivelyEvaluatedForImpairment"),
             # Pre-CECL
-            ("us-gaap", "AllowanceForLoanAndLeaseLosses"),
             ("us-gaap", "LoansAndLeasesReceivableAllowance"),
+            ("us-gaap", "AllowanceForLoanAndLeaseLosses"),
         ],
         "provisions": [
-            # CECL-era
+            # CECL-era - primary provision concept
             ("us-gaap", "ProvisionForCreditLosses"),
-            # Pre-CECL
-            ("us-gaap", "ProvisionForLoanLeaseAndOtherLosses"),
+            # Used by C, COF - check this before ProvisionForLoanLeaseAndOtherLosses
+            # because COF has older data in the latter concept
             ("us-gaap", "ProvisionForLoanLossesExpensed"),
+            # Alternative provision concepts (used by JPM, GS, USB, TFC, WFC)
+            ("us-gaap", "ProvisionForLoanLeaseAndOtherLosses"),
+            # Net provision (includes recoveries)
+            ("us-gaap", "AllowanceForLoanAndLeaseLossesProvisionForLossNet"),
+            # Credit loss expense concept
+            ("us-gaap", "CreditLossExpenseReversal"),
         ],
         "npl": [
+            # CECL-era nonaccrual
             ("us-gaap", "FinancingReceivableRecordedInvestmentNonaccrualStatus"),
+            ("us-gaap", "FinancingReceivableNonaccrualStatus"),
+            # Past due concepts
+            ("us-gaap", "FinancingReceivable90DaysOrMorePastDue"),
+            ("us-gaap", "FinancingReceivable30To89DaysPastDue"),
             ("us-gaap", "FinancingReceivable30To59DaysPastDue"),
+            # Pre-CECL
             ("us-gaap", "LoansAndLeasesReceivableNonperforming"),
         ],
         "net_charge_offs": [
+            # CECL-era
             ("us-gaap", "FinancingReceivableAllowanceForCreditLossesWriteOffs"),
+            ("us-gaap", "FinancingReceivableExcludingAccruedInterestAllowanceForCreditLossWriteoff"),
+            # Net of recoveries
             ("us-gaap", "AllowanceForLoanAndLeaseLossesWriteOffsNet"),
+            # Pre-CECL
+            ("us-gaap", "LoansAndLeasesReceivableAllowanceWriteOffsNet"),
         ],
         "total_assets": [
             ("us-gaap", "Assets"),
         ],
         "total_deposits": [
             ("us-gaap", "Deposits"),
+            ("us-gaap", "InterestBearingDepositLiabilities"),
         ],
         "net_income": [
             ("us-gaap", "NetIncomeLoss"),
+            ("us-gaap", "ProfitLoss"),
         ],
         "net_interest_income": [
             ("us-gaap", "InterestIncomeExpenseNet"),
+            ("us-gaap", "InterestIncomeExpenseAfterProvisionForLoanLoss"),
         ],
         "tier1_capital": [
             ("us-gaap", "Tier1Capital"),
+            ("us-gaap", "Tier1CapitalToRiskWeightedAssets"),
         ],
     }
 
@@ -326,17 +363,26 @@ class BankDataCollector:
         dfs = {"date": None}
 
         for metric_name, concepts in self.XBRL_CONCEPTS.items():
+            # For each metric, find the concept with the most recent data
+            best_df = None
+            best_date = None
+
             for taxonomy, concept in concepts:
                 df = self.sec_fetcher.extract_metric(facts, taxonomy, concept)
                 if df.height > 0:
-                    df = df.rename({"value": metric_name})
-                    if dfs["date"] is None:
-                        dfs["date"] = df
-                    else:
-                        dfs["date"] = dfs["date"].join(
-                            df, on="date", how="outer_coalesce"
-                        )
-                    break  # Use first successful concept
+                    latest_date = df.select(pl.col("date").max()).item()
+                    # Prefer concept with more recent data
+                    if best_date is None or latest_date > best_date:
+                        best_df = df.rename({"value": metric_name})
+                        best_date = latest_date
+
+            if best_df is not None:
+                if dfs["date"] is None:
+                    dfs["date"] = best_df
+                else:
+                    dfs["date"] = dfs["date"].join(
+                        best_df, on="date", how="outer_coalesce"
+                    )
 
         if dfs["date"] is None:
             return pl.DataFrame({"date": [], "ticker": []})
@@ -375,6 +421,105 @@ class BankDataCollector:
         # Combine all banks
         result = pl.concat(all_dfs, how="diagonal")
         return result.sort(["ticker", "date"])
+
+    def get_data_quality_summary(self) -> pl.DataFrame:
+        """
+        Generate a summary of data quality/availability for each bank.
+
+        Returns:
+            DataFrame with data quality metrics for each bank
+        """
+        summary_records = []
+
+        for ticker, bank in TARGET_BANKS.items():
+            try:
+                facts = self.sec_fetcher.get_company_facts(bank.cik)
+                if not facts:
+                    summary_records.append({
+                        "ticker": ticker,
+                        "name": bank.name,
+                        "tier": bank.tier,
+                        "has_loans": False,
+                        "loans_latest_date": None,
+                        "has_allowance": False,
+                        "allowance_latest_date": None,
+                        "has_provisions": False,
+                        "provisions_latest_date": None,
+                        "data_status": "NO_SEC_DATA",
+                    })
+                    continue
+
+                record = {
+                    "ticker": ticker,
+                    "name": bank.name,
+                    "tier": bank.tier,
+                }
+
+                # Check each key metric (prefer concept with most recent data)
+                for metric_name, concepts in [
+                    ("loans", self.XBRL_CONCEPTS["total_loans"]),
+                    ("allowance", self.XBRL_CONCEPTS["allowance"]),
+                    ("provisions", self.XBRL_CONCEPTS["provisions"]),
+                ]:
+                    best_date = None
+
+                    for taxonomy, concept in concepts:
+                        df = self.sec_fetcher.extract_metric(facts, taxonomy, concept)
+                        if df.height > 0:
+                            latest_date = df.select(pl.col("date").max()).item()
+                            if best_date is None or latest_date > best_date:
+                                best_date = latest_date
+
+                    record[f"has_{metric_name}"] = best_date is not None
+                    record[f"{metric_name}_latest_date"] = best_date
+
+                # Determine overall data status based on recency
+                from datetime import date as dt_date
+                cutoff = dt_date(2024, 1, 1)
+
+                loans_recent = (
+                    record.get("loans_latest_date") and
+                    record["loans_latest_date"] >= cutoff
+                )
+                allowance_recent = (
+                    record.get("allowance_latest_date") and
+                    record["allowance_latest_date"] >= cutoff
+                )
+                provisions_recent = (
+                    record.get("provisions_latest_date") and
+                    record["provisions_latest_date"] >= cutoff
+                )
+
+                # Add flags for recent data availability
+                record["loans_recent"] = loans_recent
+                record["allowance_recent"] = allowance_recent
+                record["provisions_recent"] = provisions_recent
+
+                if loans_recent and allowance_recent and provisions_recent:
+                    record["data_status"] = "COMPLETE"
+                elif loans_recent and allowance_recent:
+                    record["data_status"] = "COMPLETE_NO_PROV"
+                elif record["has_loans"] and not loans_recent:
+                    record["data_status"] = "STALE_DATA"
+                elif record["has_loans"] and not record["has_allowance"]:
+                    record["data_status"] = "PARTIAL"
+                else:
+                    record["data_status"] = "LIMITED"
+
+                summary_records.append(record)
+
+            except Exception as e:
+                summary_records.append({
+                    "ticker": ticker,
+                    "name": bank.name,
+                    "tier": bank.tier,
+                    "has_loans": False,
+                    "has_allowance": False,
+                    "has_provisions": False,
+                    "data_status": f"ERROR: {str(e)[:50]}",
+                })
+
+        return pl.DataFrame(summary_records)
 
     def compute_derived_metrics(self, df: pl.DataFrame) -> pl.DataFrame:
         """
