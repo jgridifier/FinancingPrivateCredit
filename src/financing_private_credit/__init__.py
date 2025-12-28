@@ -29,6 +29,19 @@ from .indicators.credit_boom import (
 from .indicators.variance_decomposition import (
     VarianceDecompositionIndicator,
 )
+from .indicators.bank_macro_sensitivity import (
+    BankMacroSensitivityIndicator,
+    MacroSensitivityForecaster,
+    MacroSensitivityNowcaster,
+    MacroSensitivityBacktester,
+)
+from .indicators.duration_mismatch import (
+    DurationMismatchIndicator,
+    DurationMismatchForecaster,
+    DurationMismatchNowcaster,
+    DurationMismatchBacktester,
+    DurationMismatchVisualizer,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -53,4 +66,15 @@ __all__ = [
     "LendingIntensityScore",
     "ARDLModel",
     "SARIMAXForecaster",
+    # Bank Macro Sensitivity (Novel Insight 1)
+    "BankMacroSensitivityIndicator",
+    "MacroSensitivityForecaster",
+    "MacroSensitivityNowcaster",
+    "MacroSensitivityBacktester",
+    # Duration Mismatch (Novel Insight 2)
+    "DurationMismatchIndicator",
+    "DurationMismatchForecaster",
+    "DurationMismatchNowcaster",
+    "DurationMismatchBacktester",
+    "DurationMismatchVisualizer",
 ]

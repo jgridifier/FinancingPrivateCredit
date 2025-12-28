@@ -1,0 +1,26 @@
+{
+  "name": "duration_ardl_volatility",
+  "description": "ARDL model specification for predicting earnings volatility from duration exposure and yield changes.",
+
+  "target": "earnings_volatility",
+
+  "ar_lags": [1, 2, 4],
+
+  "predictors": [
+    "predicted_impact_pct",
+    "yield_change",
+    "duration_zscore"
+  ],
+
+  "predictor_lags": {
+    "predicted_impact_pct": [0, 1, 2],
+    "yield_change": [0, 1, 2, 4],
+    "duration_zscore": [0, 1]
+  },
+
+  "include_constant": true,
+  "include_trend": false,
+  "use_robust_se": true,
+
+  "min_observations": 20
+}

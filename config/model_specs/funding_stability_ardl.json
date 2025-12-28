@@ -1,0 +1,17 @@
+{
+  "name": "funding_stability_ardl_fhlb",
+  "description": "ARDL model for FHLB advance ratio forecasting",
+  "target": "fhlb_advance_ratio",
+  "ar_lags": 2,
+  "dist_lags": 2,
+  "exog_vars": [
+    "fed_funds_rate",
+    "yield_curve_slope",
+    "credit_spread",
+    "deposit_growth"
+  ],
+  "include_constant": true,
+  "include_trend": false,
+  "include_ecm": false,
+  "ecm_lags": 1
+}

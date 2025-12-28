@@ -1,0 +1,36 @@
+{
+  "name": "bank_macro_sensitivity_extended",
+  "description": "Extended model with additional macro features including housing and labor market indicators.",
+
+  "target": "nim",
+
+  "macro_features": [
+    "rate_spread",
+    "output_gap",
+    "inflation_yoy",
+    "term_spread",
+    "credit_spread",
+    "vix",
+    "unemployment_rate",
+    "house_price_growth"
+  ],
+
+  "macro_lags": {
+    "rate_spread": [0, 1, 2, 4],
+    "output_gap": [0, 1, 2, 4],
+    "inflation_yoy": [0, 1, 2],
+    "term_spread": [0, 1],
+    "credit_spread": [0, 1, 2],
+    "vix": [0, 1],
+    "unemployment_rate": [0, 1],
+    "house_price_growth": [0, 1, 2]
+  },
+
+  "max_bins": 10,
+  "min_observations_in_split": 8,
+  "max_interaction_level": 2,
+
+  "bank_fixed_effects": true,
+  "min_observations_per_bank": 24,
+  "holdout_periods": 8
+}

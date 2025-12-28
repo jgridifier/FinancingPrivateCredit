@@ -1,0 +1,24 @@
+{
+  "name": "bank_macro_sensitivity_minimal",
+  "description": "Minimal model with only rate spread and output gap - follows paper's original specification.",
+
+  "target": "nim",
+
+  "macro_features": [
+    "rate_spread",
+    "output_gap"
+  ],
+
+  "macro_lags": {
+    "rate_spread": [0, 1],
+    "output_gap": [0]
+  },
+
+  "max_bins": 5,
+  "min_observations_in_split": 15,
+  "max_interaction_level": 1,
+
+  "bank_fixed_effects": true,
+  "min_observations_per_bank": 16,
+  "holdout_periods": 4
+}
