@@ -7,6 +7,7 @@ based on NY Fed Staff Report 1111 methodology.
 Available Indicators:
 - credit_boom: Credit Boom Leading Indicator (LIS-based)
 - variance_decomposition: Cross-Bank Variance Decomposition
+- bank_macro_sensitivity: Bank-Specific Macro Sensitivity (NIM elasticities)
 
 Usage:
     from financing_private_credit.indicators import get_indicator, list_indicators
@@ -18,6 +19,12 @@ Usage:
     indicator = get_indicator("variance_decomposition")
     data = indicator.fetch_data("2015-01-01")
     result = indicator.calculate(data)
+
+    # Bank Macro Sensitivity example
+    sensitivity = get_indicator("bank_macro_sensitivity")
+    data = sensitivity.fetch_data("2010-01-01")
+    result = sensitivity.calculate(data)
+    print(result.data)  # Sensitivity rankings by bank
 """
 
 from .base import (
@@ -34,6 +41,7 @@ from .base import (
 # Import indicator implementations to register them
 from . import credit_boom
 from . import variance_decomposition
+from . import bank_macro_sensitivity
 
 __all__ = [
     "BaseIndicator",

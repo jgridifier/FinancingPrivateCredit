@@ -1,0 +1,32 @@
+{
+  "name": "bank_macro_sensitivity_default",
+  "description": "Default APLR model for bank-specific macro sensitivity analysis. Measures NIM elasticity to rate spreads, output gap, and inflation.",
+
+  "target": "nim",
+
+  "macro_features": [
+    "rate_spread",
+    "output_gap",
+    "inflation_yoy",
+    "term_spread",
+    "credit_spread",
+    "vix"
+  ],
+
+  "macro_lags": {
+    "rate_spread": [0, 1, 2],
+    "output_gap": [0, 1, 4],
+    "inflation_yoy": [0, 1],
+    "term_spread": [0],
+    "credit_spread": [0, 1],
+    "vix": [0]
+  },
+
+  "max_bins": 8,
+  "min_observations_in_split": 10,
+  "max_interaction_level": 2,
+
+  "bank_fixed_effects": true,
+  "min_observations_per_bank": 20,
+  "holdout_periods": 4
+}

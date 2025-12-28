@@ -105,6 +105,46 @@ TARGET_BANKS = {
         rssd_id="2277860",
         tier=3,
     ),
+    # --- Expanded Bank List for Macro Sensitivity Analysis ---
+    "SCHW": BankInfo(
+        ticker="SCHW",
+        name="The Charles Schwab Corporation",
+        cik="0000316709",
+        rssd_id="4846951",  # Charles Schwab Bank, SSB
+        tier=3,
+    ),
+    "BK": BankInfo(
+        ticker="BK",
+        name="The Bank of New York Mellon Corporation",
+        cik="0001390777",
+        rssd_id="3587146",
+        tier=2,
+    ),
+    "STT": BankInfo(
+        ticker="STT",
+        name="State Street Corporation",
+        cik="0000093751",
+        rssd_id="1111435",
+        tier=2,
+    ),
+    "NTRS": BankInfo(
+        ticker="NTRS",
+        name="Northern Trust Corporation",
+        cik="0000073124",
+        rssd_id="1199611",
+        tier=3,
+    ),
+    "RJF": BankInfo(
+        ticker="RJF",
+        name="Raymond James Financial, Inc.",
+        cik="0000720005",
+        rssd_id="3793882",  # Raymond James Bank
+        tier=3,
+    ),
+    # Note: TD Bank (TD) - Canadian parent; US subsidiary TD Bank, N.A. doesn't file
+    # separate SEC reports. Data availability may be limited for macro sensitivity.
+    # Note: Barclays (BCS) - UK parent; US subsidiary files limited SEC reports.
+    # ADR filings may not contain full NIM/loan data needed for analysis.
 }
 
 
