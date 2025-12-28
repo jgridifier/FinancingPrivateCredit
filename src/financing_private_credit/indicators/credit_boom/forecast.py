@@ -1,15 +1,10 @@
 """
-Provision rate forecasting models using APLR (Automatic Piecewise Linear Regression).
+Provision Rate Forecasting using APLR.
 
-APLR from interpretml provides interpretable, automatic feature engineering with
-piecewise linear relationships - suitable for financial time series with non-linear
+APLR (Automatic Piecewise Linear Regression) from interpretml provides
+interpretable, automatic feature engineering with piecewise linear
+relationships - suitable for financial time series with non-linear
 patterns and regime changes.
-
-Key features:
-- Automatic piecewise linear fitting
-- Handles seasonality through explicit seasonal features
-- Configurable via JSON specification files
-- Built-in backtesting support
 """
 
 from __future__ import annotations
@@ -28,7 +23,6 @@ try:
     APLR_AVAILABLE = True
 except ImportError:
     APLR_AVAILABLE = False
-    print("Warning: interpret-ml not installed. Install with: pip install interpret")
 
 
 @dataclass
@@ -374,7 +368,6 @@ class APLRForecaster:
             y_pred = model.predict(x_current)[0]
 
             # Estimate prediction interval (simplified - uses historical residuals)
-            # In practice, you'd want proper prediction intervals
             std_est = np.std(model.predict(X_last) - bank_df.select(self.spec.target).to_numpy().flatten()[-len(X_last):])
 
             results.append(ForecastResult(
@@ -388,8 +381,6 @@ class APLRForecaster:
             ))
 
             # Update feature vector for next step (shift AR lags)
-            # This is a simplified version - proper implementation would
-            # recursively update all features
             for i, lag in enumerate(self.spec.ar_lags):
                 if i < len(self.spec.ar_lags) - 1:
                     x_current[0, i] = x_current[0, i + 1]
@@ -505,27 +496,4 @@ def get_forecaster(spec: ModelSpecification):
     if APLR_AVAILABLE:
         return APLRForecaster(spec)
     else:
-        print("Warning: Using fallback forecaster. Install interpret-ml for APLR.")
         return FallbackForecaster(spec)
-
-
-if __name__ == "__main__":
-    # Test specification creation
-    spec = ModelSpecification(
-        name="baseline_aplr",
-        description="Baseline APLR model with quarterly seasonality",
-        target="provision_rate",
-        ar_lags=[1, 2, 3, 4],
-        exogenous_vars=["lis", "loan_growth_yoy"],
-        exogenous_lags={"lis": [4, 8]},
-        include_seasonality=True,
-        seasonality_period=4,
-    )
-
-    # Save example spec
-    spec.to_json("example_spec.json")
-    print("Saved example specification to example_spec.json")
-
-    # Test loading
-    loaded_spec = ModelSpecification.from_json("example_spec.json")
-    print(f"Loaded spec: {loaded_spec.name}")

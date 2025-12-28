@@ -15,14 +15,19 @@ This package provides tools to:
 
 from .data import FREDDataFetcher, PrivateCreditData
 from .analysis import CreditDecomposition, DemandSystemModel
-from .nowcast import CreditNowcaster
 from .macro import MacroDataFetcher, BankSystemData
 from .bank_data import BankDataCollector, SyntheticBankData, TARGET_BANKS
-from .leading_indicator import (
+
+# Import from indicator packages
+from .indicators.credit_boom import (
+    CreditBoomIndicator,
     LendingIntensityScore,
     ARDLModel,
     SARIMAXForecaster,
-    CreditBoomIndicator,
+    CreditNowcaster,
+)
+from .indicators.variance_decomposition import (
+    VarianceDecompositionIndicator,
 )
 
 __version__ = "0.1.0"
@@ -42,9 +47,10 @@ __all__ = [
     "BankDataCollector",
     "SyntheticBankData",
     "TARGET_BANKS",
-    # Leading indicators
+    # Indicators
+    "CreditBoomIndicator",
+    "VarianceDecompositionIndicator",
     "LendingIntensityScore",
     "ARDLModel",
     "SARIMAXForecaster",
-    "CreditBoomIndicator",
 ]

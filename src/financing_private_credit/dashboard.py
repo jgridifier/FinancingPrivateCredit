@@ -18,8 +18,12 @@ import polars as pl
 import streamlit as st
 
 from .bank_data import BankDataCollector, TARGET_BANKS
-from .leading_indicator import LendingIntensityScore, ARDLModel
-from .nowcast import CreditNowcaster, FinancialConditionsMonitor
+from .indicators.credit_boom import (
+    LendingIntensityScore,
+    ARDLModel,
+    CreditNowcaster,
+    FinancialConditionsMonitor,
+)
 
 
 # Page configuration

@@ -22,12 +22,14 @@ from typing import Any, Optional
 
 import polars as pl
 
-from .base import (
+from ..base import (
     BaseIndicator,
     IndicatorMetadata,
     IndicatorResult,
     register_indicator,
 )
+from .lis import LendingIntensityScore
+from .nowcast import CreditNowcaster, NowcastResult
 
 
 @register_indicator("credit_boom")
@@ -38,6 +40,11 @@ class CreditBoomIndicator(BaseIndicator):
     Identifies banks with aggressive lending patterns that historically
     precede elevated credit losses.
     """
+
+    def __init__(self, config_path: Optional[str] = None):
+        super().__init__(config_path)
+        self._lis_calculator: Optional[LendingIntensityScore] = None
+        self._nowcaster: Optional[CreditNowcaster] = None
 
     def get_metadata(self) -> IndicatorMetadata:
         return IndicatorMetadata(
@@ -61,8 +68,8 @@ class CreditBoomIndicator(BaseIndicator):
         end_date: Optional[str] = None,
     ) -> dict[str, pl.DataFrame]:
         """Fetch SEC EDGAR and FRED data."""
-        from ..bank_data import BankDataCollector
-        from ..cache import CachedFREDFetcher
+        from ...bank_data import BankDataCollector
+        from ...cache import CachedFREDFetcher
 
         # Fetch bank-level data from SEC EDGAR
         collector = BankDataCollector(start_date=start_date)
@@ -99,24 +106,35 @@ class CreditBoomIndicator(BaseIndicator):
                 metadata={"error": "No bank data available"},
             )
 
-        # Compute LIS scores
-        lis_panel = self._compute_lis(bank_panel)
+        # Compute LIS scores using the dedicated class
+        system_data = data.get("system_h8", pl.DataFrame())
+
+        if system_data.height > 0:
+            self._lis_calculator = LendingIntensityScore(
+                bank_data=bank_panel,
+                system_data=system_data,
+                growth_col="loan_growth_yoy",
+            )
+            lis_panel = self._lis_calculator.compute_lis()
+        else:
+            # Fallback to cross-sectional LIS
+            lis_panel = self._compute_cross_sectional_lis(bank_panel)
 
         return IndicatorResult(
             indicator_name="credit_boom",
             calculation_date=datetime.now(),
             data=lis_panel,
             metadata={
-                "n_banks": lis_panel["ticker"].n_unique(),
+                "n_banks": lis_panel["ticker"].n_unique() if "ticker" in lis_panel.columns else 0,
                 "date_range": (
-                    str(lis_panel["date"].min()),
-                    str(lis_panel["date"].max()),
+                    str(lis_panel["date"].min()) if lis_panel.height > 0 else None,
+                    str(lis_panel["date"].max()) if lis_panel.height > 0 else None,
                 ),
             },
         )
 
-    def _compute_lis(self, panel: pl.DataFrame) -> pl.DataFrame:
-        """Compute Lending Intensity Scores."""
+    def _compute_cross_sectional_lis(self, panel: pl.DataFrame) -> pl.DataFrame:
+        """Compute LIS using cross-sectional standardization."""
         if panel.height == 0 or "loan_growth_yoy" not in panel.columns:
             return panel
 
@@ -179,6 +197,10 @@ class CreditBoomIndicator(BaseIndicator):
                 metadata={"error": "No H.8 data available"},
             )
 
+        # Use the nowcaster
+        self._nowcaster = CreditNowcaster()
+        nowcast_result = self._nowcaster.nowcast_from_h8(system_h8)
+
         # Compute weekly growth as proxy
         weekly_growth = system_h8.with_columns(
             ((pl.col("TOTLL") / pl.col("TOTLL").shift(52) - 1) * 100)
@@ -197,6 +219,7 @@ class CreditBoomIndicator(BaseIndicator):
             metadata={
                 "latest_growth": float(latest["total_credit_growth_yoy"][0]) if latest.height > 0 else None,
                 "latest_date": str(latest["date"][0]) if latest.height > 0 else None,
+                "nowcast_estimate": nowcast_result.estimate,
                 "methodology": "Weekly H.8 credit growth as LIS proxy",
             },
         )
@@ -235,3 +258,9 @@ class CreditBoomIndicator(BaseIndicator):
             return ("🟢", "CONSERVATIVE")
         else:
             return ("⚪", "NORMAL")
+
+    def get_current_signals(self, threshold: float = 1.0) -> pl.DataFrame:
+        """Get current LIS signals for all banks."""
+        if self._lis_calculator is not None:
+            return self._lis_calculator.get_current_signals(threshold)
+        return pl.DataFrame()

@@ -30,9 +30,8 @@ from typing import Any, Optional
 
 import numpy as np
 import polars as pl
-from scipy import stats
 
-from .base import (
+from ..base import (
     BaseDecomposition,
     IndicatorMetadata,
     IndicatorResult,
@@ -144,8 +143,8 @@ class VarianceDecompositionIndicator(BaseDecomposition):
         end_date: Optional[str] = None,
     ) -> dict[str, pl.DataFrame]:
         """Fetch bank-level and macro data."""
-        from ..bank_data import BankDataCollector
-        from ..cache import CachedFREDFetcher
+        from ...bank_data import BankDataCollector
+        from ...cache import CachedFREDFetcher
 
         # Fetch bank-level data from SEC EDGAR
         collector = BankDataCollector(start_date=start_date)
@@ -153,7 +152,7 @@ class VarianceDecompositionIndicator(BaseDecomposition):
         bank_panel = collector.compute_derived_metrics(bank_panel)
 
         # Fetch macro data from FRED
-        fetcher = CachedFREDFetcher(max_age_hours=24)  # Daily macro data cached longer
+        fetcher = CachedFREDFetcher(max_age_hours=24)
 
         macro_series = list(self.MACRO_VARIABLES.keys())
         macro_data = fetcher.fetch_multiple_series(macro_series, start_date=start_date)
@@ -395,7 +394,6 @@ class VarianceDecompositionIndicator(BaseDecomposition):
             }
 
             # Compute fitted macro effect for all observations
-            # Prepare full X matrix
             X_full = np.column_stack([
                 np.ones(bank_df.height),
                 *[bank_df.select(v).fill_null(0).to_numpy().flatten() for v in macro_vars]
@@ -420,7 +418,6 @@ class VarianceDecompositionIndicator(BaseDecomposition):
 
         Where w̄ = Loans / Assets (loan share of balance sheet)
         """
-        # If we have total_assets, use it; otherwise estimate from loans
         if "total_assets" in bank_df.columns:
             bank_df = bank_df.with_columns([
                 (pl.col("total_loans").shift(1) / pl.col("total_assets").shift(1))
@@ -434,8 +431,7 @@ class VarianceDecompositionIndicator(BaseDecomposition):
                 .alias("size_effect")
             )
         else:
-            # Approximate: assume loans grow at same rate as "system" or use loan growth
-            # For now, use a simplified version
+            # Approximate using loan growth
             bank_df = bank_df.with_columns(
                 (pl.col("loans_lag") * pl.col("loan_growth_yoy").fill_null(0) / 100 * 0.5)
                 .alias("size_effect")
@@ -466,7 +462,6 @@ class VarianceDecompositionIndicator(BaseDecomposition):
                 .alias("allocation_effect")
             )
         else:
-            # Simplified: allocation effect is residual between loan growth and size effect
             bank_df = bank_df.with_columns(
                 pl.lit(0.0).alias("allocation_effect")
             )
@@ -548,7 +543,6 @@ class VarianceDecompositionIndicator(BaseDecomposition):
         elif idio_pct > 40:
             return ARCHETYPES["idiosyncratic_specialist"]
         else:
-            # Default to macro follower if no clear dominant
             return ARCHETYPES["macro_follower"]
 
     def nowcast(
@@ -563,7 +557,6 @@ class VarianceDecompositionIndicator(BaseDecomposition):
         and monthly/weekly macro data for the macro component.
         """
         system_h8 = data.get("system_h8", pl.DataFrame())
-        macro_data = data.get("macro_data", pl.DataFrame())
 
         if system_h8.height == 0:
             return IndicatorResult(
@@ -601,9 +594,7 @@ class VarianceDecompositionIndicator(BaseDecomposition):
                     data=current_data,
                     metadata={
                         "qtd_credit_growth": qtd_growth,
-                        "current_quarter": current_quarter_start.strftime("%Y-Q%q").replace(
-                            "%q", str((current_quarter_start.month - 1) // 3 + 1)
-                        ),
+                        "current_quarter": current_quarter_start.strftime("%Y-Q") + str((current_quarter_start.month - 1) // 3 + 1),
                         "methodology": "Quarter-to-date H.8 credit growth",
                     },
                 )
@@ -625,11 +616,11 @@ class VarianceDecompositionIndicator(BaseDecomposition):
             ],
             "primary_metric": "macro_pct",
             "component_colors": {
-                "macro": "#3182ce",    # Blue
-                "size": "#38a169",     # Green
-                "allocation": "#dd6b20",  # Orange
-                "idiosyncratic": "#718096",  # Gray
-                "covariance": "#9f7aea",  # Purple
+                "macro": "#3182ce",
+                "size": "#38a169",
+                "allocation": "#dd6b20",
+                "idiosyncratic": "#718096",
+                "covariance": "#9f7aea",
             },
         }
 

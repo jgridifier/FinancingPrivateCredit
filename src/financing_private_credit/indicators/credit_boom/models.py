@@ -1,26 +1,22 @@
 """
-Credit Boom Leading Indicator Model.
+Credit Boom Prediction Models.
 
-Implements predictive models based on Boyarchenko & Elias (2024) findings:
-- Banks that expand credit aggressively today will have higher provisions 3-4 years later
-- Bank credit is more procyclical than nonbank credit
-- Lender composition predicts crisis probability
+Implements:
+1. ARDL: Autoregressive Distributed Lag panel model
+2. SARIMAX: Bank-specific time series forecasting
 
-Models:
-1. Lending Intensity Score (LIS): Bank lending vs. system average
-2. ARDL: Autoregressive Distributed Lag panel model
-3. SARIMAX: Bank-specific time series forecasting
+These models test the paper's hypothesis that LIS at t-12 to t-16
+predicts provision rates at t.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Literal
 
 import numpy as np
 import polars as pl
-from scipy import stats
 
 try:
     from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -30,19 +26,6 @@ try:
     HAS_STATSMODELS = True
 except ImportError:
     HAS_STATSMODELS = False
-
-
-@dataclass
-class LISResult:
-    """Lending Intensity Score result for a bank."""
-
-    ticker: str
-    date: datetime
-    lis: float  # Standard deviations from system mean
-    bank_growth: float
-    system_growth: float
-    system_std: float
-    percentile: float  # Rank among peers
 
 
 @dataclass
@@ -73,114 +56,6 @@ class ForecastResult:
     ci_upper: float
     risk_level: Literal["low", "medium", "high"]
     model_used: str
-
-
-class LendingIntensityScore:
-    """
-    Compute Lending Intensity Score (LIS) for each bank.
-
-    LIS = (Bank Loan Growth - System Loan Growth) / σ(System Loan Growth)
-
-    Interpretation:
-    - LIS > 0: Bank is lending more aggressively than peers
-    - LIS > 1: Bank is > 1 SD above system average
-    - LIS > 2: Warning sign of aggressive lending
-    """
-
-    def __init__(
-        self,
-        bank_data: pl.DataFrame,
-        system_data: pl.DataFrame,
-        growth_col: str = "loan_growth_yoy",
-    ):
-        """
-        Initialize LIS calculator.
-
-        Args:
-            bank_data: Panel of bank-level data with ticker, date, growth
-            system_data: System-wide growth data with date and growth
-            growth_col: Name of growth column
-        """
-        self.bank_data = bank_data
-        self.system_data = system_data
-        self.growth_col = growth_col
-
-    def compute_lis(self) -> pl.DataFrame:
-        """
-        Compute LIS for all banks at all dates.
-
-        Returns:
-            DataFrame with ticker, date, lis, and components
-        """
-        # Merge bank and system data
-        df = self.bank_data.join(
-            self.system_data.select(["date", self.growth_col]).rename(
-                {self.growth_col: "system_growth"}
-            ),
-            on="date",
-            how="left",
-        )
-
-        # Rename bank growth column
-        df = df.with_columns(
-            pl.col(self.growth_col).alias("bank_growth")
-        )
-
-        # Compute rolling system statistics (20-quarter window)
-        df = df.with_columns([
-            pl.col("system_growth").rolling_mean(window_size=20).alias("system_mean"),
-            pl.col("system_growth").rolling_std(window_size=20).alias("system_std"),
-        ])
-
-        # Compute LIS
-        df = df.with_columns(
-            ((pl.col("bank_growth") - pl.col("system_growth")) / pl.col("system_std"))
-            .alias("lis")
-        )
-
-        # Compute cumulative LIS (sum over 12 quarters)
-        df = df.with_columns(
-            pl.col("lis").rolling_sum(window_size=12).over("ticker").alias("lis_cumulative_12q")
-        )
-
-        # Compute percentile rank among peers at each date
-        df = df.with_columns(
-            pl.col("bank_growth").rank().over("date").alias("growth_rank")
-        )
-        df = df.with_columns(
-            (pl.col("growth_rank") / pl.col("growth_rank").max().over("date") * 100)
-            .alias("growth_percentile")
-        )
-
-        return df
-
-    def get_current_signals(self, threshold: float = 1.0) -> pl.DataFrame:
-        """
-        Get current LIS signals for all banks.
-
-        Args:
-            threshold: LIS threshold for flagging (default: 1 SD)
-
-        Returns:
-            DataFrame with current signals sorted by risk
-        """
-        df = self.compute_lis()
-
-        # Get most recent date for each bank
-        latest = df.group_by("ticker").agg(
-            pl.col("date").max().alias("date")
-        )
-
-        # Filter to latest observations
-        current = df.join(latest, on=["ticker", "date"], how="inner")
-
-        # Add risk flags
-        current = current.with_columns([
-            (pl.col("lis") > threshold).alias("elevated_lis"),
-            (pl.col("lis_cumulative_12q") > threshold * 4).alias("sustained_elevation"),
-        ])
-
-        return current.sort("lis", descending=True)
 
 
 class ARDLModel:
@@ -530,221 +405,3 @@ class SARIMAXForecaster:
             ))
 
         return results
-
-
-class CreditBoomIndicator:
-    """
-    Main class for credit boom early warning system.
-
-    Combines:
-    1. LIS calculation for each bank
-    2. ARDL estimation for historical validation
-    3. SARIMAX forecasting for forward signals
-    4. Dashboard generation
-    """
-
-    def __init__(
-        self,
-        bank_data: pl.DataFrame,
-        system_data: pl.DataFrame,
-        macro_data: Optional[pl.DataFrame] = None,
-    ):
-        """
-        Initialize the credit boom indicator.
-
-        Args:
-            bank_data: Panel of bank-level data
-            system_data: System-wide aggregates
-            macro_data: Macro control variables
-        """
-        self.bank_data = bank_data
-        self.system_data = system_data
-        self.macro_data = macro_data
-
-        self.lis_calculator: Optional[LendingIntensityScore] = None
-        self.ardl_model: Optional[ARDLModel] = None
-        self._signals: Optional[pl.DataFrame] = None
-
-    def compute_lis(self) -> pl.DataFrame:
-        """Compute LIS for all banks."""
-        self.lis_calculator = LendingIntensityScore(
-            self.bank_data,
-            self.system_data,
-            growth_col="loan_growth_yoy",
-        )
-        return self.lis_calculator.compute_lis()
-
-    def estimate_ardl(
-        self,
-        controls: Optional[list[str]] = None,
-    ) -> ARDLResult:
-        """Estimate ARDL model on historical data."""
-        # Merge LIS with bank data
-        lis_data = self.compute_lis()
-
-        # Merge with macro if available
-        if self.macro_data is not None:
-            lis_data = lis_data.join(
-                self.macro_data,
-                on="date",
-                how="left",
-            )
-
-        self.ardl_model = ARDLModel(
-            lis_data,
-            dep_var="provision_rate",
-            lis_var="lis",
-        )
-
-        return self.ardl_model.estimate(controls=controls)
-
-    def generate_forecasts(
-        self,
-        horizon: int = 16,
-    ) -> pl.DataFrame:
-        """
-        Generate provision forecasts for all banks.
-
-        Args:
-            horizon: Forecast horizon in quarters
-
-        Returns:
-            DataFrame with forecasts for all banks
-        """
-        lis_data = self.compute_lis()
-        tickers = lis_data["ticker"].unique().to_list()
-
-        all_forecasts = []
-
-        for ticker in tickers:
-            try:
-                forecaster = SARIMAXForecaster(
-                    lis_data,
-                    ticker=ticker,
-                    dep_var="provision_rate",
-                    exog_vars=["lis"],
-                )
-                forecaster.fit()
-                forecasts = forecaster.forecast(horizon=horizon)
-                all_forecasts.extend(forecasts)
-            except Exception as e:
-                print(f"Warning: Could not forecast {ticker}: {e}")
-
-        # Convert to DataFrame
-        if not all_forecasts:
-            return pl.DataFrame()
-
-        records = [
-            {
-                "ticker": f.ticker,
-                "forecast_date": f.forecast_date,
-                "horizon_quarters": f.horizon_quarters,
-                "point_forecast": f.point_forecast,
-                "ci_lower": f.ci_lower,
-                "ci_upper": f.ci_upper,
-                "risk_level": f.risk_level,
-            }
-            for f in all_forecasts
-        ]
-
-        return pl.DataFrame(records)
-
-    def generate_early_warning_signals(self) -> pl.DataFrame:
-        """
-        Generate comprehensive early warning signals.
-
-        Combines:
-        - Current LIS levels
-        - Historical pattern (cumulative LIS)
-        - Forward forecasts
-        - Risk classification
-
-        Returns:
-            DataFrame with signals for each bank
-        """
-        # Current LIS
-        lis_current = self.lis_calculator.get_current_signals() if self.lis_calculator else self.compute_lis()
-        current = lis_current.group_by("ticker").agg(
-            pl.col("date").max().alias("date")
-        )
-        current_signals = lis_current.join(current, on=["ticker", "date"], how="inner")
-
-        # ARDL-based risk assessment
-        if self.ardl_model and self.ardl_model._result:
-            lis_effect = self.ardl_model._result.lis_effect_3yr
-        else:
-            lis_effect = 0.01  # Default assumption
-
-        # Compute expected provision increase
-        current_signals = current_signals.with_columns(
-            (pl.col("lis") * lis_effect * 100).alias("expected_provision_impact_bp")
-        )
-
-        # Overall risk classification
-        current_signals = current_signals.with_columns(
-            pl.when(
-                (pl.col("lis") > 2.0) | (pl.col("lis_cumulative_12q") > 8.0)
-            ).then(pl.lit("HIGH"))
-            .when(
-                (pl.col("lis") > 1.0) | (pl.col("lis_cumulative_12q") > 4.0)
-            ).then(pl.lit("MEDIUM"))
-            .otherwise(pl.lit("LOW"))
-            .alias("risk_classification")
-        )
-
-        self._signals = current_signals
-        return current_signals
-
-    def get_summary_table(self) -> pl.DataFrame:
-        """
-        Get summary table for dashboard display.
-
-        Returns:
-            DataFrame formatted for display
-        """
-        if self._signals is None:
-            self.generate_early_warning_signals()
-
-        return self._signals.select([
-            "ticker",
-            "date",
-            "lis",
-            "lis_cumulative_12q",
-            "bank_growth",
-            "system_growth",
-            "expected_provision_impact_bp",
-            "risk_classification",
-        ]).sort("risk_classification", descending=True)
-
-
-if __name__ == "__main__":
-    # Test with synthetic data
-    from .bank_data import SyntheticBankData
-
-    print("Generating synthetic data...")
-    synth = SyntheticBankData()
-    panel = synth.generate_panel(n_banks=5)
-
-    # Create system data (average across banks)
-    system = panel.group_by("date").agg(
-        pl.col("loan_growth_yoy").mean().alias("loan_growth_yoy")
-    ).sort("date")
-
-    print("\nComputing Lending Intensity Score...")
-    lis_calc = LendingIntensityScore(panel, system)
-    lis_data = lis_calc.compute_lis()
-    print(lis_data.select(["date", "ticker", "lis", "lis_cumulative_12q"]).tail(10))
-
-    print("\nCurrent signals:")
-    current = lis_calc.get_current_signals()
-    print(current.select(["ticker", "lis", "lis_cumulative_12q", "elevated_lis"]))
-
-    print("\nEstimating ARDL model...")
-    ardl = ARDLModel(lis_data, dep_var="provision_rate", lis_var="lis")
-    try:
-        result = ardl.estimate()
-        print(ardl.get_summary())
-    except Exception as e:
-        print(f"ARDL estimation failed: {e}")
-
-    print("\nCredit Boom Indicator complete.")
