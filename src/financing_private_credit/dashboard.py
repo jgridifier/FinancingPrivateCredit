@@ -333,10 +333,15 @@ def load_weekly_h8_data() -> pl.DataFrame:
 
     Uses local file caching (6-hour expiry) to reduce FRED API load.
     """
+    # Try to use cached fetcher, fallback to non-cached if import fails
     try:
         from .cache import CachedFREDFetcher
         fetcher = CachedFREDFetcher(max_age_hours=6)
+    except ImportError:
+        from .data import FREDDataFetcher
+        fetcher = FREDDataFetcher()
 
+    try:
         # Weekly H.8 series
         h8_series = ["TOTLL", "BUSLOANS", "CONSUMER", "REALLN"]
 
@@ -364,6 +369,9 @@ def load_weekly_h8_data() -> pl.DataFrame:
 
         return data
     except Exception as e:
+        # Log error for debugging
+        import sys
+        print(f"Error loading H.8 data: {e}", file=sys.stderr)
         return pl.DataFrame()
 
 
@@ -1314,6 +1322,7 @@ def main():
 
         else:
             st.warning("Could not load weekly H.8 data. Check FRED API connection.")
+            st.info("Try clearing the Streamlit cache: click the menu (⋮) → Clear cache, then refresh the page.")
 
     # Tab 5: Forecasts
     with tab5:
