@@ -1,0 +1,109 @@
+{
+  "_": {
+    "uninsured_deposit_ratio": {
+      "name": "uninsured_deposits_default",
+      "description": "Default ARDL model for uninsured deposit ratio",
+      "target": "uninsured_deposit_ratio",
+      "model_type": "ardl",
+      "ar_lags": 2,
+      "dist_lags": 2,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope", "deposit_growth"],
+      "include_constant": true,
+      "include_trend": false
+    },
+    "fhlb_advance_ratio": {
+      "name": "fhlb_advances_default",
+      "description": "Default ARDL model for FHLB advance ratio",
+      "target": "fhlb_advance_ratio",
+      "model_type": "ardl",
+      "ar_lags": 2,
+      "dist_lags": 2,
+      "exog_vars": ["fed_funds_rate", "credit_spread", "deposit_growth"],
+      "include_constant": true,
+      "include_trend": false
+    },
+    "brokered_deposit_ratio": {
+      "name": "brokered_deposits_default",
+      "description": "Default ARDL model for brokered deposit ratio",
+      "target": "brokered_deposit_ratio",
+      "model_type": "ardl",
+      "ar_lags": 1,
+      "dist_lags": 2,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope"],
+      "include_constant": true,
+      "include_trend": false
+    },
+    "aoci_impact_ratio": {
+      "name": "aoci_impact_default",
+      "description": "Default ARDL model for AOCI impact ratio",
+      "target": "aoci_impact_ratio",
+      "model_type": "ardl",
+      "ar_lags": 2,
+      "dist_lags": 3,
+      "exog_vars": ["yield_curve_slope", "dgs10_change", "credit_spread"],
+      "include_constant": true,
+      "include_trend": false
+    }
+  },
+  "JPM": {
+    "uninsured_deposit_ratio": {
+      "name": "uninsured_deposits_jpm",
+      "description": "JPM-specific ARDL model - lower sensitivity to rate changes",
+      "target": "uninsured_deposit_ratio",
+      "model_type": "ardl",
+      "ar_lags": 3,
+      "dist_lags": 2,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope", "deposit_growth", "vix"],
+      "include_constant": true,
+      "include_trend": false
+    },
+    "fhlb_advance_ratio": {
+      "name": "fhlb_advances_jpm",
+      "description": "JPM-specific - minimal FHLB reliance",
+      "target": "fhlb_advance_ratio",
+      "model_type": "ardl",
+      "ar_lags": 1,
+      "dist_lags": 1,
+      "exog_vars": ["credit_spread"],
+      "include_constant": true,
+      "include_trend": false
+    }
+  },
+  "BAC": {
+    "uninsured_deposit_ratio": {
+      "name": "uninsured_deposits_bac",
+      "description": "BAC-specific ARDL model",
+      "target": "uninsured_deposit_ratio",
+      "model_type": "ardl",
+      "ar_lags": 2,
+      "dist_lags": 3,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope", "deposit_growth"],
+      "include_constant": true,
+      "include_trend": true
+    }
+  },
+  "SCHW": {
+    "uninsured_deposit_ratio": {
+      "name": "uninsured_deposits_schw",
+      "description": "Schwab-specific - higher sensitivity to rates (brokerage deposits)",
+      "target": "uninsured_deposit_ratio",
+      "model_type": "ardl",
+      "ar_lags": 4,
+      "dist_lags": 4,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope", "sp500_return", "vix"],
+      "include_constant": true,
+      "include_trend": false
+    },
+    "fhlb_advance_ratio": {
+      "name": "fhlb_advances_schw",
+      "description": "Schwab-specific - higher FHLB dependence during rate moves",
+      "target": "fhlb_advance_ratio",
+      "model_type": "ardl",
+      "ar_lags": 3,
+      "dist_lags": 3,
+      "exog_vars": ["fed_funds_rate", "yield_curve_slope", "deposit_growth"],
+      "include_constant": true,
+      "include_trend": false
+    }
+  }
+}
