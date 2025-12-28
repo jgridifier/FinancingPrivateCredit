@@ -1,0 +1,49 @@
+{
+  "name": "variance_decomp_baseline",
+  "description": "Baseline variance decomposition with standard macro variables",
+  "indicator": "variance_decomposition",
+
+  "macro_variables": {
+    "output_gap": {
+      "source": "FRED",
+      "series": ["GDPC1", "GDPPOT"],
+      "transform": "(GDPC1 - GDPPOT) / GDPPOT"
+    },
+    "inflation": {
+      "source": "FRED",
+      "series": ["CPIAUCSL"],
+      "transform": "yoy_pct_change"
+    },
+    "long_rate": {
+      "source": "FRED",
+      "series": ["GS10"],
+      "transform": "level"
+    },
+    "credit_spread": {
+      "source": "FRED",
+      "series": ["BAA10Y"],
+      "transform": "level"
+    }
+  },
+
+  "estimation": {
+    "method": "OLS",
+    "ar_lags": 4,
+    "macro_lags": [1, 2],
+    "min_observations": 20
+  },
+
+  "sample": {
+    "start_date": "2000-01-01",
+    "end_date": null,
+    "exclude_covid": true,
+    "covid_start": "2020-01-01",
+    "covid_end": "2020-12-31"
+  },
+
+  "banks": {
+    "tier1": ["JPM", "BAC", "C", "WFC"],
+    "tier2": ["GS", "MS"],
+    "tier3": ["USB", "PNC", "TFC", "COF"]
+  }
+}

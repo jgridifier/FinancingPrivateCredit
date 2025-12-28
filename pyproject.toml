@@ -1,0 +1,46 @@
+[project]
+name = "financing-private-credit"
+version = "0.1.0"
+description = "Reproduction and extension of NY Fed Staff Report 1111: Financing Private Credit"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Morgan Stanley FP&A", email = "quant@morganstanley.com"}
+]
+keywords = ["private-credit", "financial-accounts", "shadow-banking", "fed", "economics"]
+
+dependencies = [
+    "polars>=1.0.0",
+    "altair>=5.0.0",
+    "fredapi>=0.5.0",
+    "requests>=2.31.0",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "statsmodels>=0.14.0",
+    "streamlit>=1.28.0",
+    "interpret>=0.6.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+credit-dashboard = "financing_private_credit.dashboard:main"
+backtest-models = "financing_private_credit.scripts.backtest_models:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
