@@ -8,6 +8,7 @@ Available Indicators:
 - credit_boom: Credit Boom Leading Indicator (LIS-based)
 - variance_decomposition: Cross-Bank Variance Decomposition
 - bank_macro_sensitivity: Bank-Specific Macro Sensitivity (NIM elasticities)
+- duration_mismatch: Duration Mismatch as Predictive Signal (volatility prediction)
 
 Usage:
     from financing_private_credit.indicators import get_indicator, list_indicators
@@ -25,6 +26,12 @@ Usage:
     data = sensitivity.fetch_data("2010-01-01")
     result = sensitivity.calculate(data)
     print(result.data)  # Sensitivity rankings by bank
+
+    # Duration Mismatch example
+    duration = get_indicator("duration_mismatch")
+    data = duration.fetch_data("2010-01-01")
+    result = duration.calculate(data)
+    print(result.data)  # Vulnerability rankings
 """
 
 from .base import (
@@ -42,6 +49,7 @@ from .base import (
 from . import credit_boom
 from . import variance_decomposition
 from . import bank_macro_sensitivity
+from . import duration_mismatch
 
 __all__ = [
     "BaseIndicator",

@@ -1,0 +1,17 @@
+{
+  "name": "duration_mismatch_default",
+  "description": "Default model for duration mismatch analysis. Predicts earnings volatility from securities portfolio duration exposure.",
+
+  "duration_method": "estimated",
+  "include_afs": true,
+  "include_htm": true,
+  "include_trading": false,
+
+  "yield_series": ["DGS1", "DGS2", "DGS5", "DGS10", "DGS30"],
+
+  "earnings_vol_window": 8,
+  "stock_vol_window": 60,
+
+  "forecast_horizon": 4,
+  "min_observations": 16
+}

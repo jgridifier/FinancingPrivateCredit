@@ -35,6 +35,13 @@ from .indicators.bank_macro_sensitivity import (
     MacroSensitivityNowcaster,
     MacroSensitivityBacktester,
 )
+from .indicators.duration_mismatch import (
+    DurationMismatchIndicator,
+    DurationMismatchForecaster,
+    DurationMismatchNowcaster,
+    DurationMismatchBacktester,
+    DurationMismatchVisualizer,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -64,4 +71,10 @@ __all__ = [
     "MacroSensitivityForecaster",
     "MacroSensitivityNowcaster",
     "MacroSensitivityBacktester",
+    # Duration Mismatch (Novel Insight 2)
+    "DurationMismatchIndicator",
+    "DurationMismatchForecaster",
+    "DurationMismatchNowcaster",
+    "DurationMismatchBacktester",
+    "DurationMismatchVisualizer",
 ]

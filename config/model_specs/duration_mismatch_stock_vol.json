@@ -1,0 +1,28 @@
+{
+  "name": "duration_ardl_stock_volatility",
+  "description": "ARDL model for predicting stock return volatility from duration exposure. Alternative to earnings-based model.",
+
+  "target": "stock_volatility",
+
+  "ar_lags": [1, 2],
+
+  "predictors": [
+    "predicted_impact_pct",
+    "yield_change",
+    "duration_zscore",
+    "vix"
+  ],
+
+  "predictor_lags": {
+    "predicted_impact_pct": [0, 1],
+    "yield_change": [0, 1, 2],
+    "duration_zscore": [0],
+    "vix": [0, 1]
+  },
+
+  "include_constant": true,
+  "include_trend": false,
+  "use_robust_se": true,
+
+  "min_observations": 16
+}
