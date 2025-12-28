@@ -1,21 +1,26 @@
-# Financing Private Credit
+# Financial Indicator Framework
 
-Reproduction and extension of [NY Fed Staff Report 1111: Financing Private Credit](https://www.newyorkfed.org/research/staff_reports/sr1111) by Nina Boyarchenko and Leonardo Elias (August 2024).
+A modular indicator framework for credit and financing analysis. Originally based on [NY Fed Staff Report 1111: Financing Private Credit](https://www.newyorkfed.org/research/staff_reports/sr1111), now extended to support general financial indicator development.
 
 ## Overview
 
-This project reproduces the methodology from the NY Fed paper and extends it with:
-- **Credit Boom Leading Indicator**: Predict bank provisions 3-4 years ahead
-- **Lending Intensity Score (LIS)**: Measure bank aggressiveness vs. peers
-- **ARDL & SARIMAX Models**: Panel and time-series forecasting
-- **Real-time nowcasting** using weekly bank credit data
-- **Interactive visualizations** with Vega-Altair
+This framework provides:
+- **Modular Indicator Architecture**: Plug-and-play indicators with standardized interfaces
+- **Enhanced Model Specification System**: Per-ticker and component-level model configurations
+- **Monte Carlo Forecasting**: ARDL models with joint distribution simulation
+- **Real-time Nowcasting**: High-frequency proxy updates between quarterly releases
+- **Interactive Visualizations**: Numbered Vega-Altair charts for storytelling
 
-### Key Finding from the Paper
+## Available Indicators
 
-> "The sectoral composition of lenders financing a credit expansion is a key determinant for subsequent real activity and crisis probability."
-
-Banks that expand credit aggressively today will have higher provisions 3-4 years later.
+| Indicator | Description | Key Insight |
+|-----------|-------------|-------------|
+| `demand_system` | Original paper replication | Bank-financed credit expansions → higher crisis probability |
+| `credit_boom` | Credit Boom Leading Indicator | LIS predicts provisions 3-4 years ahead |
+| `bank_macro_sensitivity` | Bank-specific macro elasticities | Heterogeneous NIM responses to rate changes |
+| `duration_mismatch` | Duration exposure signal | Predicted earnings impact from yield changes |
+| `funding_stability` | Funding resilience score | SVB-style run risk prediction |
+| `variance_decomposition` | Cross-bank variance analysis | Systematic vs idiosyncratic credit risk |
 
 ## Installation
 
@@ -31,140 +36,187 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### Basic Usage: Credit Decomposition
+### Basic Usage
 
 ```python
-from financing_private_credit import PrivateCreditData, DemandSystemModel
+from financing_private_credit.indicators import get_indicator, list_indicators
 
-# Fetch data from FRED
-data = PrivateCreditData(start_date="1990-01-01")
-raw = data.fetch_all()
+# List available indicators
+print(list_indicators())
 
-# Compute bank vs nonbank decomposition
-decomposed = data.compute_credit_decomposition()
+# Get and run an indicator
+indicator = get_indicator("funding_stability")
+data = indicator.fetch_data("2015-01-01")
+result = indicator.calculate(data)
 
-# Estimate supply elasticities
-model = DemandSystemModel(decomposed.drop_nulls())
-results = model.estimate_full_system()
-
-print(f"Bank elasticity: {results['supply_elasticities'].bank_elasticity:.3f}")
+# View rankings
+print(result.data)
 ```
 
-### Credit Boom Indicator
+### Using Custom Model Specifications
 
 ```python
-from financing_private_credit import (
-    SyntheticBankData, LendingIntensityScore, CreditBoomIndicator
+from financing_private_credit.core import ModelSpecRegistry
+
+# Load multi-ticker spec file
+registry = ModelSpecRegistry.from_json("config/model_specs/funding_stability_components.json")
+
+# Get JPM-specific spec for uninsured deposits
+spec = registry.get_component_spec("JPM", "uninsured_deposit_ratio")
+
+# Fall back to default if ticker not defined
+spec = registry.get_component_spec("UNKNOWN", "fhlb_advance_ratio")  # Uses "_" default
+```
+
+### Forecasting with Monte Carlo
+
+```python
+from financing_private_credit.indicators.funding_stability import (
+    FundingStabilityForecaster,
+    PREDEFINED_SCENARIOS
 )
-import polars as pl
 
-# Generate bank panel data (or use real SEC data)
-synth = SyntheticBankData()
-bank_panel = synth.generate_panel(n_banks=10)
+# Initialize forecaster
+forecaster = FundingStabilityForecaster(result.data)
 
-# Compute system average
-system_avg = bank_panel.group_by('date').agg(
-    pl.col('loan_growth_yoy').mean().alias('loan_growth_yoy')
+# Fit ARDL models for each component
+fit_results = forecaster.fit_component_models(macro_data)
+
+# Run Monte Carlo simulation
+mc_results = forecaster.monte_carlo_forecast(
+    baseline_macro=PREDEFINED_SCENARIOS["baseline"],
+    n_simulations=5000
 )
-
-# Calculate Lending Intensity Score
-lis = LendingIntensityScore(bank_panel, system_avg)
-lis_data = lis.compute_lis()
-
-# Get current signals
-signals = lis.get_current_signals(threshold=1.0)
-print(signals.select(['ticker', 'lis', 'elevated_lis']))
 ```
 
-## Methodology
+## Model Specification System
 
-### 1. Lending Intensity Score (LIS)
+The framework supports flexible model specifications with per-ticker customization:
 
-Measures each bank's lending aggressiveness relative to the system:
-
+```json
+{
+    "_": {
+        "uninsured_deposit_ratio": {
+            "name": "default",
+            "ar_lags": 2,
+            "dist_lags": 2,
+            "exog_vars": ["fed_funds_rate", "yield_curve_slope"]
+        }
+    },
+    "JPM": {
+        "uninsured_deposit_ratio": {
+            "name": "jpm_specific",
+            "ar_lags": 3,
+            "exog_vars": ["fed_funds_rate", "yield_curve_slope", "vix"]
+        }
+    }
+}
 ```
-LIS = (Bank_Loan_Growth - System_Loan_Growth) / σ(System_Growth)
-```
 
-- **LIS > 1**: Warning - Bank lending 1+ SDs above average
-- **LIS > 2**: Alert - Bank lending 2+ SDs above average
-- **Cumulative LIS**: Sum over 12 quarters for sustained exposure
+**Key Features:**
+- `_` key defines the default specification
+- Ticker-specific overrides (e.g., `"JPM"`, `"BAC"`)
+- Component-level specs (e.g., `uninsured_deposit_ratio`, `fhlb_advance_ratio`)
+- Grid search for hyperparameter optimization
 
-### 2. ARDL Model
+## Bank Coverage
 
-Autoregressive Distributed Lag model testing the paper's hypothesis:
+### Tier 1: G-SIBs
+JPM, BAC, C, WFC
 
-```
-Provision_{t} = α + Σ β_j Provision_{t-j} + Σ γ_h LIS_{t-h} + Controls + ε
-```
+### Tier 2: Large Banks
+GS, MS, BK, STT
 
-Key lags: h = 12, 14, 16, 18, 20 quarters (3-5 years ahead)
-
-### 3. SARIMAX Forecasting
-
-Bank-specific time series forecasting with:
-- Seasonal patterns (quarterly)
-- Exogenous variables (LIS, macro conditions)
-- Confidence intervals
-
-### 4. Early Warning System
-
-Combines LIS levels with ARDL coefficients to generate risk classifications:
-
-| Risk Level | Criteria |
-|------------|----------|
-| HIGH | LIS > 2 OR Cumulative LIS > 8 |
-| MEDIUM | LIS > 1 OR Cumulative LIS > 4 |
-| LOW | LIS < 1 AND Cumulative LIS < 4 |
+### Tier 3: Regional & Specialty
+USB, PNC, TFC, COF, SCHW, NTRS, RJF
 
 ## Data Sources
 
-### FRED (Federal Reserve Economic Data)
-
-| Series | Description | Frequency |
-|--------|-------------|-----------|
-| CRDQUSAPABIS | Total Credit to Private Non-Financial Sector | Quarterly |
-| TOTLL | Total Loans & Leases, Commercial Banks | Weekly |
-| GDP, GDPPOT | GDP and Potential GDP | Quarterly |
-| BAA10Y | Baa Corporate Spread | Daily |
-| NFCI | Financial Conditions Index | Weekly |
-
-### Bank-Level Data (SEC EDGAR / Synthetic)
-
-- Total loans and loan growth
-- Provision for credit losses
-- Non-performing loans (NPL)
-- Allowance for credit losses
+| Source | Data | Usage |
+|--------|------|-------|
+| **FFIEC Call Reports** | Schedule RC-O, RC-M, RC-E, RC-B, RC-R | Uninsured deposits, FHLB advances, securities |
+| **SEC EDGAR** | 10-K/10-Q XBRL filings | NIM, loans, deposits, earnings |
+| **FRED** | Macro series | Fed funds, yields, GDP, financial conditions |
+| **Yahoo Finance** | Stock prices, earnings | Volatility, beta calculations |
 
 ## Project Structure
 
 ```
 financing-private-credit/
 ├── src/financing_private_credit/
-│   ├── data.py              # FRED data fetching & processing
-│   ├── analysis.py          # Demand system & elasticity estimation
-│   ├── nowcast.py           # High-frequency nowcasting
-│   ├── macro.py             # Macro & H.8 system data
-│   ├── bank_data.py         # Bank-level data collection
-│   ├── leading_indicator.py # LIS, ARDL, SARIMAX models
-│   └── viz.py               # Vega-Altair visualizations
+│   ├── core/                      # Core infrastructure
+│   │   ├── config.py              # Configuration loading
+│   │   ├── registry.py            # Generic registry pattern
+│   │   ├── model_specs.py         # Enhanced spec system
+│   │   └── utils.py               # Common utilities
+│   │
+│   ├── indicators/                # Indicator implementations
+│   │   ├── base.py                # Base classes and registry
+│   │   ├── demand_system/         # Paper replication
+│   │   ├── credit_boom/           # LIS-based indicator
+│   │   ├── bank_macro_sensitivity/ # NIM elasticities
+│   │   ├── duration_mismatch/     # Duration exposure
+│   │   ├── funding_stability/     # Funding resilience
+│   │   └── variance_decomposition/ # Cross-bank variance
+│   │
+│   ├── bank_data.py               # Bank-level data collection
+│   ├── cache.py                   # Data caching
+│   ├── data.py                    # FRED data fetching
+│   ├── macro.py                   # Macro data
+│   └── dashboard.py               # Interactive dashboard
+│
+├── config/
+│   └── model_specs/               # Model specifications
+│       ├── funding_stability.json
+│       ├── funding_stability_components.json  # Multi-ticker example
+│       └── ...
+│
+├── tests/
 ├── notebooks/
-│   ├── 01_reproduce_fed_methodology.ipynb
-│   └── 02_credit_boom_indicator.ipynb
-├── pyproject.toml
 └── README.md
 ```
 
-## Notebooks
+## Indicator Module Structure
 
-1. **01_reproduce_fed_methodology.ipynb**: Reproduce the paper's core findings
-2. **02_credit_boom_indicator.ipynb**: Full credit boom early warning system
+Each indicator follows a standard structure:
+
+```
+indicator_name/
+├── __init__.py       # Package exports
+├── indicator.py      # Core indicator class (@register_indicator)
+├── forecast.py       # ARDL/APLR forecasting with Monte Carlo
+├── nowcast.py        # High-frequency proxy updates
+├── backtest.py       # Model validation framework
+├── viz.py            # Numbered Vega-Altair charts
+└── README.md         # Indicator-specific documentation
+```
+
+## Key Concepts
+
+### Funding Stability Score Components
+
+| Component | Source | Interpretation |
+|-----------|--------|----------------|
+| Uninsured Deposits | RC-O Memo 2 | Run risk (>50% = high) |
+| FHLB Advances | RC-M Item 5.a | Desperation signal (>10% = concern) |
+| Brokered Deposits | RC-E Memo 1.b | Hot money (rate-sensitive) |
+| AOCI Impact | RC-B + RC-R | Trapped capital (>50% TCE = critical) |
+
+### Predefined Stress Scenarios
+
+| Scenario | Fed Funds | Curve Slope | Credit Spread |
+|----------|-----------|-------------|---------------|
+| baseline | 5.25% | 0bp | 150bp |
+| rate_hike_100bp | 6.25% | -25bp | 175bp |
+| recession | 3.00% | +150bp | 350bp |
+| svb_stress | 5.50% | -75bp | 250bp |
 
 ## References
 
-- Boyarchenko, N., & Elias, L. (2024). [Financing Private Credit](https://www.newyorkfed.org/research/staff_reports/sr1111). Federal Reserve Bank of New York Staff Reports, No. 1111.
+- Boyarchenko, N., & Elias, L. (2024). [Financing Private Credit](https://www.newyorkfed.org/research/staff_reports/sr1111). NY Fed Staff Reports, No. 1111.
 - Schularick, M., & Taylor, A. M. (2012). Credit booms gone bust. *American Economic Review*.
-- Greenwood, R., et al. (2022). Predictable financial crises. *Journal of Finance*.
+- FFIEC Call Report Instructions
+- SVB Failure Analysis (FDIC, 2023)
 
 ## License
 
