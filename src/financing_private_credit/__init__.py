@@ -1,22 +1,32 @@
 """
-Financing Private Credit
-========================
+Financial Indicator Framework
+=============================
 
-Reproduction and extension of NY Fed Staff Report 1111.
+A modular framework for bank-level financial indicators.
+Originally based on NY Fed Staff Report 1111, now extended for general use.
 
-This package provides tools to:
-1. Fetch private credit data from FRED (Z.1 Financial Accounts)
-2. Decompose credit by lender type (banks vs nonbanks)
-3. Analyze the demand system for credit supply/demand elasticities
-4. Nowcast credit conditions using higher-frequency proxy data
-5. Build credit boom leading indicators (ARDL, SARIMAX)
-6. Generate early warning signals for bank credit stress
+Indicators:
+- demand_system: Original paper replication (bank vs nonbank credit)
+- credit_boom: Lending Intensity Score (LIS) for early warning
+- bank_macro_sensitivity: NIM elasticities to macro conditions
+- duration_mismatch: Duration exposure and earnings vulnerability
+- funding_stability: SVB-style run risk prediction
+- variance_decomposition: Systematic vs idiosyncratic risk
+
+See `indicators` subpackage for the registry API:
+    from financing_private_credit.indicators import get_indicator, list_indicators
 """
 
 from .data import FREDDataFetcher, PrivateCreditData
-from .analysis import CreditDecomposition, DemandSystemModel
 from .macro import MacroDataFetcher, BankSystemData
 from .bank_data import BankDataCollector, SyntheticBankData, TARGET_BANKS
+
+# Import from demand_system indicator (paper replication)
+from .indicators.demand_system import (
+    DemandSystemIndicator,
+    CreditDecomposition,
+    DemandSystemModel,
+)
 
 # Import from indicator packages
 from .indicators.credit_boom import (
@@ -42,17 +52,25 @@ from .indicators.duration_mismatch import (
     DurationMismatchBacktester,
     DurationMismatchVisualizer,
 )
+from .indicators.funding_stability import (
+    FundingStabilityIndicator,
+    FundingStabilityForecaster,
+    FundingStabilityNowcaster,
+    FundingStabilityBacktester,
+    FundingStabilityVisualizer,
+)
+
+# Registry API
+from .indicators import get_indicator, list_indicators
 
 __version__ = "0.1.0"
 __all__ = [
+    # Registry API
+    "get_indicator",
+    "list_indicators",
     # Core data
     "FREDDataFetcher",
     "PrivateCreditData",
-    # Analysis
-    "CreditDecomposition",
-    "DemandSystemModel",
-    # Nowcasting
-    "CreditNowcaster",
     # Macro data
     "MacroDataFetcher",
     "BankSystemData",
@@ -60,21 +78,33 @@ __all__ = [
     "BankDataCollector",
     "SyntheticBankData",
     "TARGET_BANKS",
-    # Indicators
+    # Demand System (Paper Replication)
+    "DemandSystemIndicator",
+    "CreditDecomposition",
+    "DemandSystemModel",
+    # Credit Boom
     "CreditBoomIndicator",
-    "VarianceDecompositionIndicator",
     "LendingIntensityScore",
     "ARDLModel",
     "SARIMAXForecaster",
-    # Bank Macro Sensitivity (Novel Insight 1)
+    "CreditNowcaster",
+    # Variance Decomposition
+    "VarianceDecompositionIndicator",
+    # Bank Macro Sensitivity
     "BankMacroSensitivityIndicator",
     "MacroSensitivityForecaster",
     "MacroSensitivityNowcaster",
     "MacroSensitivityBacktester",
-    # Duration Mismatch (Novel Insight 2)
+    # Duration Mismatch
     "DurationMismatchIndicator",
     "DurationMismatchForecaster",
     "DurationMismatchNowcaster",
     "DurationMismatchBacktester",
     "DurationMismatchVisualizer",
+    # Funding Stability
+    "FundingStabilityIndicator",
+    "FundingStabilityForecaster",
+    "FundingStabilityNowcaster",
+    "FundingStabilityBacktester",
+    "FundingStabilityVisualizer",
 ]
