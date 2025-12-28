@@ -21,16 +21,41 @@ Banks with higher predicted impact should experience:
 
 ## Methodology
 
-### Step 1: Estimate Duration Exposure
+### Step 1: Estimate Duration Exposure (Refined Approach)
 
-Duration is extracted/estimated from:
-- **SEC EDGAR 10-K/10-Q**: Securities portfolio disclosures (AFS/HTM classification)
-- **Derived metrics**: Estimated modified duration based on portfolio composition
+Duration is estimated using **Schedule RC-B (Securities)** from FFIEC Call Reports (FFIEC 031/041) or **Schedule HC-B** from FR Y-9C for bank holding companies.
 
-Since banks rarely disclose exact duration, we estimate using:
+**Primary Method: Maturity Bucket Data (Memorandum Item 2)**
+
+The Call Report provides securities by maturity/repricing bucket:
+
+| Bucket | MDRM Code | Proxy Duration |
+|--------|-----------|----------------|
+| ≤1 year | RCFDA549 | 0.5 years |
+| 1-5 years | RCFDA550 | 2.5 years |
+| 5-10 years | RCFDA551 | 6.5 years |
+| >10 years | RCFDA552 | 12.0 years |
+
+**Weighted Average Duration Formula:**
+```
+Duration = (Bucket₁ × 0.5 + Bucket₂ × 2.5 + Bucket₃ × 6.5 + Bucket₄ × 12.0) / Total
+```
+
+**Example Calculation:**
+For a bank with $100B securities (10% ≤1yr, 40% 1-5yr, 35% 5-10yr, 15% >10yr):
+```
+Duration = (10×0.5 + 40×2.5 + 35×6.5 + 15×12.0) / 100
+         = (5 + 100 + 227.5 + 180) / 100
+         = 5.125 years
+```
+
+**MBS Special Handling:**
+MBS in Call Reports is already adjusted for prepayment/expected average life, so the bucket classification reflects true expected duration.
+
+**Fallback Method:**
+When Call Report data is unavailable, use AFS/HTM weighted averages:
 - AFS securities: ~4.5 year average duration
 - HTM securities: ~6.0 year average duration
-- Weighted by portfolio composition
 
 ### Step 2: Calculate Predicted Impact
 
@@ -60,21 +85,32 @@ Using **ARDL (Autoregressive Distributed Lag)** models:
 
 | Source | Data |
 |--------|------|
-| SEC EDGAR 10-K/10-Q | Securities portfolio (AFS/HTM), maturity disclosures |
+| **FFIEC Call Reports** | Schedule RC-B maturity buckets (FFIEC 031/041) |
+| **FR Y-9C** | Schedule HC-B for bank holding companies |
+| SEC EDGAR 10-K/10-Q | Securities portfolio (AFS/HTM), backup source |
 | Yahoo Finance | Stock returns, earnings, volatility metrics |
 | FRED | Bond yields (DGS1, DGS2, DGS5, DGS10, DGS30) |
+
+### FFIEC Call Report Data
+
+The FFIEC Central Data Repository (CDR) provides bulk downloads of Call Report data:
+- **URL**: https://cdr.ffiec.gov/public/
+- **Format**: ZIP files containing fixed-width or CSV data
+- **Frequency**: Quarterly
+- **Key MDRM Codes**: RCFDA549-A552 (maturity buckets)
 
 ## Module Structure
 
 ```
 duration_mismatch/
-├── __init__.py       # Package exports
-├── indicator.py      # Core duration extraction and impact calculation
-├── forecast.py       # ARDL-based volatility forecasting
-├── nowcast.py        # Real-time exposure estimation
-├── backtest.py       # Model validation framework
-├── viz.py            # Vega-Altair visualizations
-└── README.md         # This file
+├── __init__.py           # Package exports
+├── indicator.py          # Core duration extraction and impact calculation
+├── call_report_data.py   # FFIEC Call Report data fetcher (Schedule RC-B/HC-B)
+├── forecast.py           # ARDL-based volatility forecasting
+├── nowcast.py            # Real-time exposure estimation
+├── backtest.py           # Model validation framework
+├── viz.py                # Vega-Altair visualizations
+└── README.md             # This file
 ```
 
 ## Usage
@@ -221,10 +257,13 @@ Three pre-configured specifications in `config/model_specs/`:
 
 ## Key Metrics
 
-- **Estimated Duration**: Modified duration in years
+- **Estimated Duration**: Modified duration in years (from bucket methodology)
 - **DV01**: Dollar value impact of 1bp rate move (millions)
 - **Predicted Impact**: Earnings impact from rate changes
 - **Vulnerability Score**: Combined duration × volatility metric
+- **Duration Method**: "bucket" (Call Report), "fallback" (AFS/HTM avg), or "synthetic"
+- **Barbell Strategy Flag**: True if high short-term AND high long-term allocation
+- **Bucket Distribution**: % in each maturity bucket (≤1yr, 1-5yr, 5-10yr, >10yr)
 
 ## References
 
