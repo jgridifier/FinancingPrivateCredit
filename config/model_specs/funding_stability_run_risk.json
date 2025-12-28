@@ -1,0 +1,22 @@
+{
+  "name": "funding_stability_run_risk",
+  "description": "Funding Stability with higher weight on run risk factors (SVB-style)",
+  "weight_deposit_funding": 0.08,
+  "weight_wholesale_funding": 0.10,
+  "weight_uninsured_deposits": 0.25,
+  "weight_fhlb_advances": 0.20,
+  "weight_brokered_deposits": 0.12,
+  "weight_aoci_impact": 0.15,
+  "weight_duration_match": 0.05,
+  "weight_rate_beta": 0.05,
+  "uninsured_threshold_high": 0.40,
+  "uninsured_threshold_moderate": 0.25,
+  "fhlb_threshold_high": 0.08,
+  "fhlb_threshold_moderate": 0.04,
+  "brokered_threshold_high": 0.12,
+  "aoci_threshold_high": 0.40,
+  "score_min": 0.0,
+  "score_max": 100.0,
+  "rate_beta_window": 12,
+  "volatility_window": 8
+}

@@ -9,6 +9,7 @@ Available Indicators:
 - variance_decomposition: Cross-Bank Variance Decomposition
 - bank_macro_sensitivity: Bank-Specific Macro Sensitivity (NIM elasticities)
 - duration_mismatch: Duration Mismatch as Predictive Signal (volatility prediction)
+- funding_stability: Funding Stability Score (procyclical behavior prediction)
 
 Usage:
     from financing_private_credit.indicators import get_indicator, list_indicators
@@ -32,6 +33,12 @@ Usage:
     data = duration.fetch_data("2010-01-01")
     result = duration.calculate(data)
     print(result.data)  # Vulnerability rankings
+
+    # Funding Stability example
+    funding = get_indicator("funding_stability")
+    data = funding.fetch_data("2015-01-01")
+    result = funding.calculate(data)
+    print(result.data)  # Resilience rankings
 """
 
 from .base import (
@@ -50,6 +57,7 @@ from . import credit_boom
 from . import variance_decomposition
 from . import bank_macro_sensitivity
 from . import duration_mismatch
+from . import funding_stability
 
 __all__ = [
     "BaseIndicator",

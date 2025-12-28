@@ -1,0 +1,22 @@
+{
+  "name": "funding_stability_default",
+  "description": "Default Funding Stability Score specification",
+  "weight_deposit_funding": 0.125,
+  "weight_wholesale_funding": 0.125,
+  "weight_uninsured_deposits": 0.150,
+  "weight_fhlb_advances": 0.150,
+  "weight_brokered_deposits": 0.100,
+  "weight_aoci_impact": 0.125,
+  "weight_duration_match": 0.100,
+  "weight_rate_beta": 0.125,
+  "uninsured_threshold_high": 0.50,
+  "uninsured_threshold_moderate": 0.30,
+  "fhlb_threshold_high": 0.10,
+  "fhlb_threshold_moderate": 0.05,
+  "brokered_threshold_high": 0.15,
+  "aoci_threshold_high": 0.50,
+  "score_min": 0.0,
+  "score_max": 100.0,
+  "rate_beta_window": 12,
+  "volatility_window": 8
+}
