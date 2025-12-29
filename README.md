@@ -144,51 +144,41 @@ USB, PNC, TFC, COF, SCHW, NTRS, RJF
 ```
 financing-private-credit/
 ├── src/financing_private_credit/
-│   ├── core/                      # Core infrastructure
-│   │   ├── config.py              # Configuration loading
-│   │   ├── registry.py            # Generic registry pattern
-│   │   ├── model_specs.py         # Enhanced spec system
-│   │   └── utils.py               # Common utilities
+│   ├── core/                       # Core infrastructure
+│   │   └── model_specs.py          # Enhanced spec system
 │   │
-│   ├── indicators/                # Indicator implementations
-│   │   ├── base.py                # Base classes and registry
-│   │   ├── demand_system/         # Paper replication
-│   │   ├── credit_boom/           # LIS-based indicator
+│   ├── indicators/                 # Indicator implementations
+│   │   ├── _template/              # Template for new indicators
+│   │   ├── demand_system/          # Paper replication
+│   │   ├── credit_boom/            # LIS-based indicator
 │   │   ├── bank_macro_sensitivity/ # NIM elasticities
-│   │   ├── duration_mismatch/     # Duration exposure
-│   │   ├── funding_stability/     # Funding resilience
+│   │   ├── duration_mismatch/      # Duration exposure
+│   │   ├── funding_stability/      # Funding resilience
 │   │   └── variance_decomposition/ # Cross-bank variance
 │   │
-│   ├── bank_data.py               # Bank-level data collection
-│   ├── cache.py                   # Data caching
-│   ├── data.py                    # FRED data fetching
-│   ├── macro.py                   # Macro data
-│   └── dashboard.py               # Interactive dashboard
+│   ├── bank_data.py                # Bank-level data (TARGET_BANKS)
+│   ├── cache.py                    # Data caching
+│   ├── data.py                     # FRED data fetching
+│   └── macro.py                    # Macro data
 │
-├── config/
-│   └── model_specs/               # Model specifications
-│       ├── funding_stability.json
-│       ├── funding_stability_components.json  # Multi-ticker example
-│       └── ...
-│
+├── config/model_specs/             # Model specifications
 ├── tests/
-├── notebooks/
+├── CONTRIBUTING.md                 # How to add new indicators
 └── README.md
 ```
 
-## Indicator Module Structure
+## Adding New Indicators
 
-Each indicator follows a standard structure:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for a complete guide.
 
-```
-indicator_name/
-├── __init__.py       # Package exports
-├── indicator.py      # Core indicator class (@register_indicator)
-├── forecast.py       # ARDL/APLR forecasting with Monte Carlo
-├── nowcast.py        # High-frequency proxy updates
-├── backtest.py       # Model validation framework
-├── viz.py            # Numbered Vega-Altair charts
-└── README.md         # Indicator-specific documentation
+Quick start:
+```bash
+# Copy the template
+cp -r src/financing_private_credit/indicators/_template \
+      src/financing_private_credit/indicators/my_indicator
+
+# Edit indicator.py, register with @register_indicator("my_indicator")
+# Add to indicators/__init__.py
 ```
 
 ## Key Concepts
