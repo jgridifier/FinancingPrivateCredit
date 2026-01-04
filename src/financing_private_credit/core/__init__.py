@@ -5,6 +5,7 @@ Provides:
 - Configuration loading and validation
 - Generic registry pattern
 - Model specification system (multi-spec, per-ticker, component-level)
+- Data registry with smart caching
 - Common utilities
 """
 
@@ -22,6 +23,12 @@ from .model_specs import (
     get_spec_registry,
     create_multi_ticker_spec,
     create_component_spec,
+)
+from .data_registry import (
+    DataRegistry,
+    DataCache,
+    CacheConfig,
+    CacheEntry,
 )
 from .utils import (
     to_quarterly,
@@ -46,6 +53,11 @@ __all__ = [
     "get_spec_registry",
     "create_multi_ticker_spec",
     "create_component_spec",
+    # Data Registry
+    "DataRegistry",
+    "DataCache",
+    "CacheConfig",
+    "CacheEntry",
     # Utils
     "to_quarterly",
     "compute_yoy_growth",

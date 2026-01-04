@@ -107,10 +107,12 @@ class BankSensitivity:
 
     # Rate sensitivity (β coefficient)
     rate_sensitivity: float
-    rate_sensitivity_se: Optional[float] = None
 
     # Output gap sensitivity (γ coefficient)
     output_gap_sensitivity: float
+
+    # Optional standard errors and other sensitivities
+    rate_sensitivity_se: Optional[float] = None
     output_gap_sensitivity_se: Optional[float] = None
 
     # Other sensitivities
