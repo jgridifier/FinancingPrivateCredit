@@ -678,3 +678,197 @@ class DataRegistry:
     def reset_force_refresh(self) -> None:
         """Reset force refresh flag."""
         self._cache.config.force_refresh = False
+
+    def get_8k_commitment_letters(
+        self,
+        date: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        max_filings: int = 50,
+        use_llm: bool = True,
+        llm_provider: str = "anthropic",
+    ) -> pl.DataFrame:
+        """
+        Fetch and extract commitment letters from 8-K filings.
+
+        This method:
+        1. Fetches 8-K filings from SEC EDGAR for the given date(s)
+        2. Extracts commitment letter provisions using regex
+        3. Optionally enhances extraction with LLM analysis
+        4. Returns a DataFrame ready for FASAR calculation
+
+        Args:
+            date: Specific date (YYYY-MM-DD)
+            start_date: Start of date range
+            end_date: End of date range
+            max_filings: Maximum 8-K filings to process
+            use_llm: Whether to use LLM for enhanced extraction
+            llm_provider: LLM provider ("anthropic" or "openai")
+
+        Returns:
+            DataFrame with columns:
+            - deal_id, bank_ticker, announcement_date, commitment_amount
+            - target_company, acquirer_company
+            - rigidity_score, has_sungard_clause, etc.
+            - raw_text (for audit)
+        """
+        from .sec_edgar import SECEdgarClient
+        from .llm_extractor import LLMExtractor, COMMITMENT_LETTER_PROMPT
+
+        # Build cache key
+        cache_date = date or f"{start_date}_{end_date}"
+        session_key = f"8k_commitments_{cache_date}_{use_llm}"
+
+        if session_key in self._session_cache:
+            return self._session_cache[session_key]
+
+        # Check persistent cache
+        cached = self._cache.get(
+            "sec_8k",
+            date=cache_date,
+            use_llm=use_llm,
+        )
+        if cached is not None:
+            self._session_cache[session_key] = cached
+            return cached
+
+        # Fetch from SEC EDGAR
+        client = SECEdgarClient()
+
+        if date:
+            extracts = client.get_commitment_letters_for_date(date, max_filings)
+        else:
+            filings = client.get_8k_filings(
+                start_date=start_date,
+                end_date=end_date,
+                max_results=max_filings,
+            )
+            extracts = client.extract_commitment_letters(filings)
+
+        if not extracts:
+            return pl.DataFrame()
+
+        # Build initial DataFrame
+        deals_df = client.build_deals_dataframe(extracts)
+
+        # Enhance with LLM extraction if requested
+        if use_llm and deals_df.height > 0:
+            deals_df = self._enhance_with_llm(
+                deals_df,
+                extracts,
+                llm_provider,
+            )
+
+        # Calculate rigidity scores
+        deals_df = self._calculate_rigidity_scores(deals_df)
+
+        # Cache result
+        if deals_df.height > 0:
+            self._cache.set(
+                deals_df,
+                "sec_8k",
+                date=cache_date,
+                use_llm=use_llm,
+            )
+
+        self._session_cache[session_key] = deals_df
+        return deals_df
+
+    def _enhance_with_llm(
+        self,
+        deals_df: pl.DataFrame,
+        extracts: list,
+        llm_provider: str,
+    ) -> pl.DataFrame:
+        """Enhance extraction with LLM analysis."""
+        from .llm_extractor import LLMExtractor, COMMITMENT_LETTER_PROMPT
+
+        try:
+            extractor = LLMExtractor(provider=llm_provider)
+
+            # Process each unique filing
+            enhanced_data = {}
+            for extract in extracts:
+                if not extract.raw_text:
+                    continue
+
+                result = extractor.extract(
+                    extract.raw_text,
+                    COMMITMENT_LETTER_PROMPT,
+                    use_llm=True,
+                )
+
+                if result.success:
+                    # Store by accession number
+                    enhanced_data[extract.filing.accession_number] = result.data
+
+            # Merge LLM data back into DataFrame
+            if enhanced_data:
+                # Add LLM-derived columns
+                llm_rigidity = []
+                llm_confidence = []
+
+                for row in deals_df.iter_rows(named=True):
+                    accession = row["deal_id"].rsplit("_", 1)[0]
+                    if accession in enhanced_data:
+                        data = enhanced_data[accession]
+                        llm_rigidity.append(data.get("rigidity_score"))
+                        llm_confidence.append(data.get("confidence"))
+                    else:
+                        llm_rigidity.append(None)
+                        llm_confidence.append(None)
+
+                deals_df = deals_df.with_columns([
+                    pl.Series("llm_rigidity_score", llm_rigidity),
+                    pl.Series("llm_confidence", llm_confidence),
+                ])
+
+        except Exception as e:
+            print(f"LLM enhancement failed: {e}")
+
+        return deals_df
+
+    def _calculate_rigidity_scores(self, deals_df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate rigidity scores from detected provisions."""
+        if deals_df.height == 0:
+            return deals_df
+
+        # Base rigidity score calculation
+        # Start at 0.5 (neutral), adjust based on provisions
+
+        rigidity_cols = []
+        for row in deals_df.iter_rows(named=True):
+            score = 0.5
+
+            # SunGard/Limited Conditionality: +0.3
+            if row.get("has_sungard_clause") or row.get("has_limited_conditionality"):
+                score += 0.3
+
+            # Market flex: -0.1 (gives bank some room)
+            if row.get("has_market_flex"):
+                score -= 0.1
+
+            # Flex is capped: +0.1 (limited flexibility)
+            if row.get("flex_is_capped"):
+                score += 0.1
+
+            # MAE market out: -0.2 (can exit on market disruption)
+            if row.get("has_mae_market_out"):
+                score -= 0.2
+
+            # Use LLM score if available and confident
+            llm_score = row.get("llm_rigidity_score")
+            llm_conf = row.get("llm_confidence")
+            if llm_score is not None and llm_conf is not None and llm_conf > 0.7:
+                # Blend with regex score
+                score = 0.6 * llm_score + 0.4 * score
+
+            # Clamp to [0, 1]
+            score = max(0.0, min(1.0, score))
+            rigidity_cols.append(score)
+
+        deals_df = deals_df.with_columns(
+            pl.Series("rigidity_score", rigidity_cols)
+        )
+
+        return deals_df
