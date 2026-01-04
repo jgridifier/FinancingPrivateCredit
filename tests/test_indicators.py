@@ -111,7 +111,7 @@ class TestCreditBoomIndicator:
             "loan_growth_yoy": [5.0, 6.0, 4.0, 3.0, 4.0, 5.0, 10.0, 8.0, 7.0],
         })
 
-        result = indicator._compute_lis(mock_data)
+        result = indicator._compute_cross_sectional_lis(mock_data)
 
         assert "lis" in result.columns
         assert result.height == 9
