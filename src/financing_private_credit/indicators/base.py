@@ -8,6 +8,15 @@ methodology from NY Fed Staff Report 1111 and extends it for specific use cases.
 Indicators implemented:
 1. Credit Boom Leading Indicator (LIS-based)
 2. Cross-Bank Variance Decomposition
+3. Bank Macro Sensitivity
+4. Duration Mismatch
+5. Funding Stability
+6. Variance Decomposition
+
+Design principles:
+- BaseIndicator requires only get_metadata(), fetch_data(), and calculate()
+- nowcast() and get_dashboard_components() are optional with sensible defaults
+- BaseForecastModel is model-agnostic (works with sklearn, statsmodels, custom, etc.)
 """
 
 from __future__ import annotations
@@ -17,13 +26,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar, Union
 
 import polars as pl
 
 
 # Type variable for indicator-specific results
 T = TypeVar("T")
+# Type variable for model types (sklearn, statsmodels, custom, etc.)
+M = TypeVar("M")
 
 
 @dataclass
@@ -62,13 +73,31 @@ class BaseIndicator(ABC):
     """
     Abstract base class for all credit/financing indicators.
 
-    Each indicator must implement:
+    Required methods (must implement):
     - get_metadata(): Return indicator metadata
     - fetch_data(): Fetch required data from sources
     - calculate(): Perform the indicator calculation
-    - nowcast(): Provide high-frequency nowcast estimates
-    - get_dashboard_components(): Return Streamlit components for display
+
+    Optional methods (have sensible defaults):
+    - nowcast(): Provide high-frequency nowcast estimates (default: not supported)
+    - get_dashboard_components(): Return Streamlit components (default: empty config)
+    - validate_data(): Validate input data (default: checks for empty DataFrames)
+
+    Example:
+        @register_indicator("my_indicator")
+        class MyIndicator(BaseIndicator):
+            def get_metadata(self) -> IndicatorMetadata:
+                return IndicatorMetadata(...)
+
+            def fetch_data(self, start_date, end_date=None) -> dict[str, pl.DataFrame]:
+                return {"bank_panel": ..., "macro_data": ...}
+
+            def calculate(self, data, **kwargs) -> IndicatorResult:
+                return IndicatorResult(...)
     """
+
+    # Class-level flag indicating if this indicator supports nowcasting
+    supports_nowcast: bool = False
 
     def __init__(self, config_path: Optional[str | Path] = None):
         """
@@ -126,7 +155,6 @@ class BaseIndicator(ABC):
         """
         pass
 
-    @abstractmethod
     def nowcast(
         self,
         data: dict[str, pl.DataFrame],
@@ -135,27 +163,43 @@ class BaseIndicator(ABC):
         """
         Generate high-frequency nowcast estimates.
 
+        Override this method if your indicator supports nowcasting.
+        Set `supports_nowcast = True` at the class level when implementing.
+
         Args:
             data: Dictionary of DataFrames including high-frequency proxies
             **kwargs: Additional nowcasting parameters
 
         Returns:
             IndicatorResult containing nowcast estimates
-        """
-        pass
 
-    @abstractmethod
+        Raises:
+            NotImplementedError: If nowcasting is not supported by this indicator
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support nowcasting. "
+            "Override nowcast() and set supports_nowcast=True to enable."
+        )
+
     def get_dashboard_components(self) -> dict[str, Any]:
         """
         Return components for Streamlit dashboard display.
 
+        Override this method to provide custom dashboard configuration.
+        The default returns a minimal configuration.
+
         Returns:
             Dictionary with:
             - 'tabs': List of tab configurations
-            - 'charts': Chart generation functions
-            - 'metrics': Metric display functions
+            - 'primary_metric': Main metric to display
+            - 'alert_fields': Fields that trigger alerts
         """
-        pass
+        metadata = self.get_metadata()
+        return {
+            "tabs": [{"name": metadata.short_name, "icon": "chart"}],
+            "primary_metric": None,
+            "alert_fields": [],
+        }
 
     def validate_data(self, data: dict[str, pl.DataFrame]) -> list[str]:
         """
@@ -174,6 +218,18 @@ class BaseIndicator(ABC):
             if "date" not in df.columns:
                 errors.append(f"Missing 'date' column: {name}")
         return errors
+
+    def get_required_data_sources(self) -> list[str]:
+        """
+        Return list of data source keys expected by fetch_data().
+
+        Override to document what data sources this indicator needs.
+        Used by DataRegistry for smart pre-fetching.
+
+        Returns:
+            List of data source names (e.g., ["bank_panel", "macro_data"])
+        """
+        return []
 
 
 class BaseDecomposition(BaseIndicator):
@@ -265,13 +321,84 @@ class BaseDecomposition(BaseIndicator):
         return aggregated
 
 
-class BaseForecastModel(ABC):
-    """
-    Base class for forecasting models used by indicators.
+@dataclass
+class ForecastResult:
+    """Container for forecast results."""
 
-    Supports multiple model types (APLR, ARDL, VAR, etc.) with
-    a consistent interface.
+    target: str
+    horizon: int
+    predictions: pl.DataFrame
+    confidence_intervals: Optional[pl.DataFrame] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "target": self.target,
+            "horizon": self.horizon,
+            "n_predictions": self.predictions.height,
+            "metadata": self.metadata,
+        }
+
+
+class BaseForecastModel(ABC, Generic[M]):
     """
+    Model-agnostic base class for forecasting.
+
+    Works with any underlying model type: sklearn, statsmodels, PyTorch,
+    custom implementations, etc. The generic type M represents the
+    underlying model type.
+
+    Design:
+    - `fit()` and `predict()` are the only required methods
+    - Optional methods for coefficients, feature importance, diagnostics
+    - Supports both single-step and multi-horizon forecasting
+    - Works with Polars DataFrames throughout
+
+    Example with sklearn:
+        class RandomForestForecaster(BaseForecastModel[RandomForestRegressor]):
+            def __init__(self, **rf_params):
+                self._model = RandomForestRegressor(**rf_params)
+
+            def fit(self, data, target, features) -> dict[str, Any]:
+                X = data.select(features).to_numpy()
+                y = data[target].to_numpy()
+                self._model.fit(X, y)
+                return {"r2": self._model.score(X, y)}
+
+            def predict(self, data, horizon) -> ForecastResult:
+                # Implementation
+                ...
+
+    Example with statsmodels:
+        class ARDLForecaster(BaseForecastModel[AutoReg]):
+            def fit(self, data, target, features) -> dict[str, Any]:
+                # Fit ARDL model
+                ...
+
+    Example with custom model:
+        class CustomForecaster(BaseForecastModel[None]):
+            # Use None for custom implementations without external model
+            ...
+    """
+
+    def __init__(self):
+        """Initialize the forecast model."""
+        self._model: Optional[M] = None
+        self._is_fitted: bool = False
+        self._target: Optional[str] = None
+        self._features: Optional[list[str]] = None
+        self._fit_metadata: dict[str, Any] = {}
+
+    @property
+    def is_fitted(self) -> bool:
+        """Check if model has been fitted."""
+        return self._is_fitted
+
+    @property
+    def model(self) -> Optional[M]:
+        """Access the underlying model object."""
+        return self._model
 
     @abstractmethod
     def fit(
@@ -279,17 +406,19 @@ class BaseForecastModel(ABC):
         data: pl.DataFrame,
         target: str,
         features: list[str],
+        **kwargs,
     ) -> dict[str, Any]:
         """
-        Fit the model to data.
+        Fit the model to training data.
 
         Args:
-            data: Training data
-            target: Target variable name
-            features: List of feature variable names
+            data: Training data as Polars DataFrame
+            target: Name of target variable column
+            features: List of feature column names
+            **kwargs: Model-specific parameters
 
         Returns:
-            Dictionary with fit metrics
+            Dictionary with fit metrics (e.g., R², AIC, BIC, RMSE)
         """
         pass
 
@@ -297,24 +426,107 @@ class BaseForecastModel(ABC):
     def predict(
         self,
         data: pl.DataFrame,
-        horizon: int,
-    ) -> pl.DataFrame:
+        horizon: int = 1,
+        **kwargs,
+    ) -> ForecastResult:
         """
-        Generate predictions.
+        Generate predictions for future periods.
 
         Args:
-            data: Data for prediction
-            horizon: Forecast horizon
+            data: Input data for prediction (may include exogenous forecasts)
+            horizon: Number of periods to forecast
+            **kwargs: Model-specific parameters (e.g., confidence level)
 
         Returns:
-            DataFrame with predictions
+            ForecastResult containing predictions and optional confidence intervals
         """
         pass
 
-    @abstractmethod
-    def get_coefficients(self) -> dict[str, float]:
-        """Return model coefficients."""
-        pass
+    def get_coefficients(self) -> Optional[dict[str, float]]:
+        """
+        Return model coefficients if available.
+
+        Not all models have interpretable coefficients (e.g., neural nets).
+        Returns None if not applicable.
+
+        Returns:
+            Dictionary mapping feature names to coefficients, or None
+        """
+        return None
+
+    def get_feature_importance(self) -> Optional[dict[str, float]]:
+        """
+        Return feature importance scores if available.
+
+        For tree-based models, returns feature_importances_.
+        For linear models, may return absolute coefficient values.
+        Returns None if not applicable.
+
+        Returns:
+            Dictionary mapping feature names to importance scores, or None
+        """
+        return None
+
+    def get_diagnostics(self) -> dict[str, Any]:
+        """
+        Return model diagnostics.
+
+        Override to provide model-specific diagnostics such as:
+        - Residual analysis
+        - Autocorrelation tests
+        - Stationarity tests
+        - Cross-validation scores
+
+        Returns:
+            Dictionary with diagnostic information
+        """
+        return {
+            "is_fitted": self._is_fitted,
+            "target": self._target,
+            "n_features": len(self._features) if self._features else 0,
+        }
+
+    def save(self, path: str | Path) -> None:
+        """
+        Save model to disk.
+
+        Override for custom serialization. Default uses pickle if available.
+
+        Args:
+            path: File path to save model
+        """
+        import pickle
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path: str | Path) -> "BaseForecastModel":
+        """
+        Load model from disk.
+
+        Args:
+            path: File path to load model from
+
+        Returns:
+            Loaded model instance
+        """
+        import pickle
+        with open(path, "rb") as f:
+            return pickle.load(f)
+
+    def clone(self) -> "BaseForecastModel":
+        """
+        Create an unfitted clone of this model with same parameters.
+
+        Useful for cross-validation and grid search.
+
+        Returns:
+            New unfitted instance with same configuration
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement clone(). "
+            "Override to support cross-validation workflows."
+        )
 
 
 # Registry for indicators

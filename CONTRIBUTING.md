@@ -18,13 +18,61 @@ Each indicator is a self-contained package with a standard structure:
 indicators/
 └── my_indicator/
     ├── __init__.py       # Package exports
-    ├── indicator.py      # Core indicator class (required)
+    ├── indicator.py      # Core indicator class (REQUIRED)
     ├── forecast.py       # Forecasting models (optional)
     ├── nowcast.py        # High-frequency updates (optional)
     ├── backtest.py       # Model validation (optional)
     ├── viz.py            # Visualizations (optional)
     └── README.md         # Indicator documentation (recommended)
 ```
+
+## Temporal Pipeline
+
+Understand when each component runs:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TEMPORAL PIPELINE                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   T-8 ←─────→ T-1         T (now)          T+1 ←─────→ T+4     │
+│   ───────────────         ────────         ────────────────     │
+│   calculate()             nowcast()         forecast()          │
+│                                                                  │
+│   Historical data         Adjust for        Predict future      │
+│   (quarterly SEC          current market    under macro         │
+│   filings, FRED)          using proxies     scenarios           │
+│                           (stocks, CDS)                          │
+│                                                                  │
+│   Updates: Quarterly      Updates: Daily    Updates: On-demand  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- **calculate()**: Core indicator using quarterly data (REQUIRED)
+- **nowcast()**: High-frequency proxy-based updates (OPTIONAL)
+- **forecast()**: Future predictions under scenarios (OPTIONAL)
+
+## Required vs Optional Methods
+
+### Required Methods
+
+Every indicator must implement these three methods:
+
+| Method | Purpose |
+|--------|---------|
+| `get_metadata()` | Describe your indicator (name, sources, frequency) |
+| `fetch_data()` | Gather required data using DataRegistry |
+| `calculate()` | Compute indicator values from data |
+
+### Optional Methods (Have Sensible Defaults)
+
+| Method | Default Behavior | Override When |
+|--------|------------------|---------------|
+| `nowcast()` | Raises NotImplementedError | You have high-frequency proxies |
+| `get_dashboard_components()` | Returns minimal config | You need custom dashboard |
+| `get_required_data_sources()` | Returns empty list | You want to document dependencies |
+| `validate_data()` | Checks for empty DataFrames | You need custom validation |
 
 ## Step-by-Step Guide
 
@@ -36,10 +84,14 @@ Your indicator must inherit from `BaseIndicator` and implement three methods:
 # indicators/my_indicator/indicator.py
 
 from ..base import BaseIndicator, IndicatorMetadata, IndicatorResult, register_indicator
+from ...core import DataRegistry
 
 @register_indicator("my_indicator")
 class MyIndicator(BaseIndicator):
     """One-line description of what this indicator measures."""
+
+    # Set to True if you implement nowcast()
+    supports_nowcast: bool = False
 
     def get_metadata(self) -> IndicatorMetadata:
         """Return indicator metadata."""
@@ -49,9 +101,9 @@ class MyIndicator(BaseIndicator):
             description="Detailed description of what this measures and why it matters.",
             version="1.0.0",
             paper_reference="Optional citation",
-            data_sources=["SEC EDGAR", "FRED"],  # List your data sources
-            update_frequency="quarterly",  # or "daily", "weekly", "monthly"
-            lookback_periods=20,  # How much history needed
+            data_sources=["SEC EDGAR", "FRED"],
+            update_frequency="quarterly",
+            lookback_periods=20,
         )
 
     def fetch_data(
@@ -59,17 +111,16 @@ class MyIndicator(BaseIndicator):
         start_date: str,
         end_date: Optional[str] = None,
     ) -> dict[str, pl.DataFrame]:
-        """Fetch all required data."""
-        # Use existing data fetchers
-        from ...bank_data import BankDataCollector, TARGET_BANKS
-        from ...cache import CachedFREDFetcher
+        """Fetch all required data using DataRegistry."""
+        registry = DataRegistry.get_instance()
 
-        collector = BankDataCollector(start_date=start_date)
-        bank_panel = collector.fetch_all_banks()
+        # Shared data (cached automatically)
+        bank_panel = registry.get_bank_panel(start_date)
+        macro_data = registry.get_macro_series(["FEDFUNDS", "DGS10"], start_date)
 
         return {
             "bank_panel": bank_panel,
-            # Add other data as needed
+            "macro_data": macro_data,
         }
 
     def calculate(
@@ -78,8 +129,7 @@ class MyIndicator(BaseIndicator):
         **kwargs,
     ) -> IndicatorResult:
         """Calculate the indicator values."""
-        # Your calculation logic here
-        result_df = ...
+        result_df = ...  # Your calculation logic
 
         return IndicatorResult(
             indicator_name="my_indicator",
@@ -89,7 +139,41 @@ class MyIndicator(BaseIndicator):
         )
 ```
 
-### 2. Register in `__init__.py`
+### 2. Using DataRegistry (Recommended)
+
+The `DataRegistry` provides centralized data fetching with smart caching:
+
+```python
+from financing_private_credit.core import DataRegistry
+
+# Get singleton instance
+registry = DataRegistry.get_instance()
+
+# Shared data sources (fetched once, cached in Arrow format)
+bank_panel = registry.get_bank_panel("2015-01-01")
+macro_data = registry.get_macro_series(["FEDFUNDS", "DGS10", "BAA10Y"], "2015-01-01")
+
+# Register custom data source
+def fetch_call_reports(start_date: str, schedule: str = "RC-O") -> pl.DataFrame:
+    # Your custom fetching logic
+    ...
+
+registry.register_source("call_reports", fetch_call_reports, ttl_hours=48)
+call_data = registry.get("call_reports", start_date="2015-01-01", schedule="RC-O")
+
+# Cache management
+registry.invalidate("bank_panel")  # Clear specific source
+registry.invalidate()  # Clear all cached data
+registry.force_refresh()  # Bypass cache on next fetch
+```
+
+**Cache Configuration:**
+- Bank panel data: 24 hours (quarterly updates)
+- FRED daily series: 6 hours
+- FRED weekly series (H.8): 24 hours
+- Custom sources: 12 hours (configurable)
+
+### 3. Register in `__init__.py`
 
 ```python
 # indicators/my_indicator/__init__.py
@@ -104,14 +188,13 @@ Then add to the parent `indicators/__init__.py`:
 ```python
 from .my_indicator import MyIndicator
 
-# Update the imports dict
 _INDICATOR_IMPORTS = {
     # ... existing indicators ...
     "my_indicator": ("my_indicator", "MyIndicator"),
 }
 ```
 
-### 3. Create Model Specifications
+### 4. Create Model Specifications
 
 Model specs configure your indicator's parameters:
 
@@ -142,40 +225,65 @@ For per-ticker configurations, use the `_` default pattern:
 }
 ```
 
-### 4. Add Forecasting (Optional)
+### 5. Add Forecasting (Optional)
+
+Create `forecast.py` using `BaseForecastModel`:
 
 ```python
 # indicators/my_indicator/forecast.py
 
-from dataclasses import dataclass
-import polars as pl
+from ..base import BaseForecastModel, ForecastResult
 
-@dataclass
-class MyForecastResult:
-    ticker: str
-    forecast_date: str
-    point_forecast: float
-    confidence_lower: float
-    confidence_upper: float
+class MyForecaster(BaseForecastModel[None]):
+    """Forecast my indicator using custom logic."""
 
-class MyForecaster:
-    """Forecast my indicator using ARDL or other models."""
+    def fit(
+        self,
+        data: pl.DataFrame,
+        target: str,
+        features: list[str],
+        **kwargs,
+    ) -> dict[str, Any]:
+        """Fit the model."""
+        self._target = target
+        self._features = features
+        self._is_fitted = True
+        return {"n_observations": data.height}
 
-    def __init__(self, spec: dict):
-        self.spec = spec
-        self.models = {}
+    def predict(
+        self,
+        data: pl.DataFrame,
+        horizon: int = 4,
+        **kwargs,
+    ) -> ForecastResult:
+        """Generate predictions."""
+        # Your prediction logic
+        predictions_df = ...
 
-    def fit(self, data: pl.DataFrame, macro_data: pl.DataFrame) -> dict:
-        """Fit forecasting models for each bank."""
-        # Implementation
-        pass
-
-    def predict(self, ticker: str, horizon: int = 4) -> MyForecastResult:
-        """Generate forecasts."""
-        pass
+        return ForecastResult(
+            target=self._target,
+            horizon=horizon,
+            predictions=predictions_df,
+        )
 ```
 
-### 5. Add Nowcasting (Optional)
+`BaseForecastModel` is model-agnostic - use it with sklearn, statsmodels, PyTorch, or custom implementations:
+
+```python
+# With sklearn
+class RandomForestForecaster(BaseForecastModel[RandomForestRegressor]):
+    ...
+
+# With statsmodels
+class ARDLForecaster(BaseForecastModel[AutoReg]):
+    ...
+
+# Custom implementation
+class CustomForecaster(BaseForecastModel[None]):
+    ...
+```
+
+### 6. Add Nowcasting (Optional)
 
 For high-frequency updates between quarterly releases:
 
@@ -185,15 +293,29 @@ For high-frequency updates between quarterly releases:
 class MyNowcaster:
     """Update indicator estimates using high-frequency proxies."""
 
-    def __init__(self, quarterly_data: pl.DataFrame):
-        self.quarterly_data = quarterly_data
-
-    def update(self, proxy_data: pl.DataFrame) -> pl.DataFrame:
+    def nowcast(
+        self,
+        quarterly_data: pl.DataFrame,
+        proxy_data: dict[str, pl.DataFrame],
+    ) -> IndicatorResult:
         """Produce nowcast using proxy variables."""
-        pass
+        # Use stock prices, CDS spreads, etc. to adjust
+        ...
 ```
 
-### 6. Add Backtesting (Optional)
+Then enable in your indicator:
+
+```python
+class MyIndicator(BaseIndicator):
+    supports_nowcast = True  # Enable nowcasting
+
+    def nowcast(self, data, **kwargs) -> IndicatorResult:
+        from .nowcast import MyNowcaster
+        nowcaster = MyNowcaster()
+        return nowcaster.nowcast(...)
+```
+
+### 7. Add Backtesting (Optional)
 
 ```python
 # indicators/my_indicator/backtest.py
@@ -218,7 +340,7 @@ class MyBacktester:
         pass
 ```
 
-### 7. Add Visualizations (Optional)
+### 8. Add Visualizations (Optional)
 
 Use Vega-Altair with numbered charts for storytelling:
 
@@ -244,7 +366,27 @@ class MyVisualizer:
 
 ## Data Sources
 
-### Using Existing Fetchers
+### Using DataRegistry (Recommended)
+
+```python
+from financing_private_credit.core import DataRegistry
+
+registry = DataRegistry.get_instance()
+
+# Bank-level SEC data (cached)
+bank_panel = registry.get_bank_panel("2015-01-01")
+
+# FRED macro data (cached)
+macro_data = registry.get_macro_series(
+    ["FEDFUNDS", "DGS10", "UNRATE"],
+    "2015-01-01"
+)
+
+# Data quality summary
+quality = registry.get_data_quality_summary()
+```
+
+### Using Fetchers Directly (Legacy)
 
 ```python
 # Bank-level SEC data
@@ -258,12 +400,6 @@ from ...cache import CachedFREDFetcher
 
 fred = CachedFREDFetcher(max_age_hours=6)
 data = fred.fetch_multiple_series(["FEDFUNDS", "DGS10"], start_date="2015-01-01")
-
-# Macro data with derived variables
-from ...macro import MacroDataFetcher
-
-macro = MacroDataFetcher(start_date="2015-01-01")
-df = macro.compute_derived_variables()
 ```
 
 ### Bank Coverage
@@ -298,6 +434,7 @@ def test_my_indicator():
     indicator = get_indicator("my_indicator")
     assert indicator is not None
     assert indicator.get_metadata().name == "My Indicator Full Name"
+    assert indicator.supports_nowcast == False  # or True if implemented
 ```
 
 ## Code Style
@@ -315,9 +452,52 @@ Before submitting:
 - [ ] Indicator class inherits from `BaseIndicator`
 - [ ] Registered with `@register_indicator("name")`
 - [ ] `get_metadata()` returns complete `IndicatorMetadata`
-- [ ] `fetch_data()` uses `TARGET_BANKS` for all banks
+- [ ] `fetch_data()` uses DataRegistry for shared data
 - [ ] `calculate()` returns `IndicatorResult`
 - [ ] Added to `indicators/__init__.py`
 - [ ] Created model spec in `config/model_specs/`
 - [ ] Added README.md documenting the indicator
 - [ ] Tests pass
+
+## Common Patterns
+
+### Indicator with Nowcasting
+
+```python
+@register_indicator("my_indicator")
+class MyIndicator(BaseIndicator):
+    supports_nowcast = True
+
+    def nowcast(self, data, **kwargs) -> IndicatorResult:
+        # Implement high-frequency updates
+        ...
+```
+
+### Indicator with Decomposition
+
+```python
+from ..base import BaseDecomposition
+
+class MyDecomposition(BaseDecomposition):
+    def decompose(self, data, entity) -> pl.DataFrame:
+        # Implement variance/growth decomposition
+        ...
+
+    def compute_variance_shares(self, decomposition) -> dict[str, float]:
+        # Compute contribution shares
+        ...
+```
+
+### Custom Dashboard
+
+```python
+def get_dashboard_components(self) -> dict[str, Any]:
+    return {
+        "tabs": [
+            {"name": "Resilience Scores", "icon": "shield"},
+            {"name": "Risk Factors", "icon": "warning"},
+        ],
+        "primary_metric": "resilience_score",
+        "alert_fields": ["is_stressed", "needs_review"],
+    }
+```

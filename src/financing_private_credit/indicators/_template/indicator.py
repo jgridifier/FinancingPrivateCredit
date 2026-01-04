@@ -3,6 +3,16 @@ Template Indicator
 
 Copy this file as a starting point for new indicators.
 Replace 'Template' with your indicator name throughout.
+
+Required methods:
+- get_metadata(): Describe your indicator
+- fetch_data(): Gather required data (use DataRegistry for shared data)
+- calculate(): Compute the indicator values
+
+Optional methods (have defaults):
+- nowcast(): High-frequency updates (set supports_nowcast=True to enable)
+- get_dashboard_components(): Streamlit dashboard config
+- get_required_data_sources(): Document data dependencies
 """
 
 from __future__ import annotations
@@ -52,6 +62,9 @@ class TemplateIndicator(BaseIndicator):
     - Metric 2: Description
     """
 
+    # Set to True if you implement nowcast()
+    supports_nowcast: bool = False
+
     def __init__(self, config_path: Optional[str] = None):
         super().__init__(config_path)
         self._spec: Optional[TemplateSpec] = None
@@ -72,6 +85,14 @@ class TemplateIndicator(BaseIndicator):
             lookback_periods=20,  # Quarters of history needed
         )
 
+    def get_required_data_sources(self) -> list[str]:
+        """
+        Document what data sources this indicator needs.
+
+        Used by DataRegistry for smart pre-fetching.
+        """
+        return ["bank_panel", "macro_data"]
+
     def fetch_data(
         self,
         start_date: str,
@@ -80,6 +101,9 @@ class TemplateIndicator(BaseIndicator):
         """
         Fetch all data required for this indicator.
 
+        Uses DataRegistry for shared data (bank panels, FRED macro).
+        Add indicator-specific data sources as needed.
+
         Args:
             start_date: Start date in YYYY-MM-DD format
             end_date: Optional end date
@@ -87,25 +111,39 @@ class TemplateIndicator(BaseIndicator):
         Returns:
             Dictionary of DataFrames with required data
         """
-        from ...bank_data import BankDataCollector, TARGET_BANKS
-        from ...cache import CachedFREDFetcher
+        # Use DataRegistry for shared data sources (recommended)
+        # This provides caching and avoids redundant API calls
+        from ...core import DataRegistry
 
-        # 1. Fetch bank-level data from SEC EDGAR
-        collector = BankDataCollector(start_date=start_date)
-        bank_panel = collector.fetch_all_banks()
-        bank_panel = collector.compute_derived_metrics(bank_panel)
+        registry = DataRegistry.get_instance()
 
-        # 2. Fetch macro data from FRED (customize series as needed)
-        fred = CachedFREDFetcher(max_age_hours=6)
+        # 1. Get shared bank panel data (cached automatically)
+        bank_panel = registry.get_bank_panel(
+            start_date=start_date,
+            compute_derived=True,  # Include derived metrics
+        )
+
+        # 2. Get FRED macro data (cached automatically)
         macro_series = ["FEDFUNDS", "DGS10", "BAA10Y"]
-        macro_data = fred.fetch_multiple_series(macro_series, start_date=start_date)
+        macro_data = registry.get_macro_series(macro_series, start_date)
 
-        # 3. Add any additional data sources here
+        # 3. Add indicator-specific data sources here
+        # Option A: Register a custom source for reuse
+        #
+        # def fetch_my_custom_data(start_date: str) -> pl.DataFrame:
+        #     # Your custom fetching logic
+        #     ...
+        #
+        # registry.register_source("my_custom_data", fetch_my_custom_data)
+        # custom_data = registry.get("my_custom_data", start_date=start_date)
+        #
+        # Option B: Fetch directly if one-time use
+        # custom_data = self._fetch_custom_data(start_date)
 
         return {
             "bank_panel": bank_panel,
             "macro_data": macro_data,
-            # Add other data as needed
+            # "custom_data": custom_data,  # Add your custom data
         }
 
     def calculate(
@@ -187,3 +225,52 @@ class TemplateIndicator(BaseIndicator):
         """
         # Implement your calculation logic
         return 0.0
+
+    # =========================================================================
+    # OPTIONAL: Nowcasting support
+    # =========================================================================
+    # Uncomment and implement if your indicator supports nowcasting.
+    # Don't forget to set `supports_nowcast = True` above.
+    #
+    # def nowcast(
+    #     self,
+    #     data: dict[str, pl.DataFrame],
+    #     **kwargs,
+    # ) -> IndicatorResult:
+    #     """
+    #     Generate high-frequency nowcast estimates.
+    #
+    #     Uses proxy variables (stock prices, CDS spreads, etc.) to update
+    #     the indicator between quarterly data releases.
+    #
+    #     Args:
+    #         data: Dictionary with "quarterly_results" and "stock_data"
+    #         **kwargs: Additional parameters
+    #
+    #     Returns:
+    #         IndicatorResult with nowcast values
+    #     """
+    #     from .nowcast import TemplateNowcaster
+    #
+    #     nowcaster = TemplateNowcaster()
+    #     return nowcaster.nowcast(
+    #         quarterly_data=data.get("quarterly_results", pl.DataFrame()),
+    #         proxy_data={"stock_data": data.get("stock_data", pl.DataFrame())},
+    #     )
+
+    # =========================================================================
+    # OPTIONAL: Custom dashboard configuration
+    # =========================================================================
+    # Uncomment to provide custom dashboard configuration.
+    # The default implementation returns a minimal config.
+    #
+    # def get_dashboard_components(self) -> dict[str, Any]:
+    #     """Return dashboard configuration."""
+    #     return {
+    #         "tabs": [
+    #             {"name": "Overview", "icon": "chart"},
+    #             {"name": "Bank Details", "icon": "bank"},
+    #         ],
+    #         "primary_metric": "my_main_metric",
+    #         "alert_fields": ["risk_flag", "warning_flag"],
+    #     }
