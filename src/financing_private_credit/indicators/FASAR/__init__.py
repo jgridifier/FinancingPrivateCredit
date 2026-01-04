@@ -15,7 +15,13 @@ Reference:
 """
 
 from .indicator import FASARIndicator, FASARSpec, CommitmentDeal, RigidityResult
-from .rigidity import RigidityScorer, RigidityClassification
+from .rigidity import (
+    RigidityScorer,
+    RigidityClassification,
+    RigidityEvidence,
+    extract_rigidity_evidence,
+    compute_preliminary_rigidity,
+)
 from .clo_velocity import CLOVelocityCalculator, CLOVelocityResult
 from .nowcast import FASARNowcaster, NowcastSignal, WarehouseStressIndicator
 from .forecast import (
@@ -34,6 +40,9 @@ __all__ = [
     # Rigidity scoring
     "RigidityScorer",
     "RigidityClassification",
+    "RigidityEvidence",
+    "extract_rigidity_evidence",
+    "compute_preliminary_rigidity",
     # CLO velocity
     "CLOVelocityCalculator",
     "CLOVelocityResult",
