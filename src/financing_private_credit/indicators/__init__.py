@@ -12,6 +12,7 @@ Available Indicators:
 - bank_macro_sensitivity: Bank-Specific Macro Sensitivity (NIM elasticities)
 - duration_mismatch: Duration Mismatch as Predictive Signal (volatility prediction)
 - funding_stability: Funding Stability Score (procyclical behavior prediction)
+- fasar: Flex-Adjusted Syndicate Absorption Ratio (hung loan risk)
 
 Usage:
     from financing_private_credit.indicators import get_indicator, list_indicators
@@ -60,6 +61,7 @@ from . import variance_decomposition
 from . import bank_macro_sensitivity
 from . import duration_mismatch
 from . import funding_stability
+from . import FASAR
 
 __all__ = [
     "BaseIndicator",
