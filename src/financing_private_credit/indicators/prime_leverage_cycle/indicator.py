@@ -38,7 +38,15 @@ class LeverageCycleSpec:
     description: str = "Default leverage cycle specification"
 
     # AUM proxy calibration
+    # TODO: Replace static hf_share_of_equity with data-driven approach using:
+    # 1. BarclayHedge or HFR industry AUM reports (quarterly)
+    # 2. 13F filings aggregation for institutional equity holdings
+    # 3. SEC Form PF aggregate data when available
+    # Current calibration: ~$5T HF AUM / ~$130T total equity market ≈ 3.5%
     hf_share_of_equity: float = 0.035  # 3.5% hedge fund share of equity market
+    # TODO: Replace static historical_leverage with rolling estimate from:
+    # 1. Prime broker leverage data from FR Y-9C filings
+    # 2. Academic estimates (Ang et al. 2011 suggest 1.5-2.0x)
     historical_leverage: float = 1.75  # Historical average leverage ratio
 
     # Moving average window for market valuation

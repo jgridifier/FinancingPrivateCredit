@@ -7,3 +7,5 @@
 2. **Efficient solutions** - Write runtime and memory efficient solutions using **polars** for dataframe operations and **altair** for visualization.
 
 3. **Concise documentation** - Keep Markdown files concise and avoid cluttering the repo with excessive markdown files.
+
+4. **TODO for simplifications** - When implementation requires simplifications or assumptions (e.g., hardcoded calibration values), add a `TODO` comment with the recommended data-driven enhancement approach.
