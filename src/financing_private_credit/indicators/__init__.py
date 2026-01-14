@@ -44,11 +44,23 @@ Usage:
 """
 
 from .base import (
+    # Core base classes
     BaseDecomposition,
     BaseForecastModel,
     BaseIndicator,
+    # Optional pattern base classes
+    BaseBacktester,
+    BaseNowcaster,
+    BaseVisualizer,
+    # Data classes
+    BacktestResult,
+    ForecastResult,
     IndicatorMetadata,
     IndicatorResult,
+    # Data quality
+    DataQualityIssue,
+    DataQualitySeverity,
+    # Registry functions
     get_indicator,
     list_indicators,
     register_indicator,
@@ -64,11 +76,23 @@ from . import funding_stability
 from . import FASAR
 
 __all__ = [
+    # Core base classes
     "BaseIndicator",
     "BaseDecomposition",
     "BaseForecastModel",
+    # Optional pattern base classes
+    "BaseBacktester",
+    "BaseNowcaster",
+    "BaseVisualizer",
+    # Data classes
+    "BacktestResult",
+    "ForecastResult",
     "IndicatorMetadata",
     "IndicatorResult",
+    # Data quality
+    "DataQualityIssue",
+    "DataQualitySeverity",
+    # Registry functions
     "get_indicator",
     "list_indicators",
     "register_indicator",
