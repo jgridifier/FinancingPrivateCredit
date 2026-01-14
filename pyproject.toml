@@ -33,6 +33,7 @@ dev = [
 [project.scripts]
 credit-dashboard = "financing_private_credit.dashboard:main"
 backtest-models = "financing_private_credit.scripts.backtest_models:main"
+financing-private-credit = "financing_private_credit.cli:main"
 
 [build-system]
 requires = ["hatchling"]
