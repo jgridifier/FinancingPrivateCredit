@@ -74,6 +74,8 @@ from . import bank_macro_sensitivity
 from . import duration_mismatch
 from . import funding_stability
 from . import FASAR
+from . import prime_leverage_cycle
+from . import prime_rehypo_liquidity
 
 __all__ = [
     # Core base classes
