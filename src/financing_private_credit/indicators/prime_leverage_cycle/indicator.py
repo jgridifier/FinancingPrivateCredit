@@ -5,7 +5,11 @@ Measures hedge fund leverage cycle positioning using prime brokerage margin loan
 and market valuations. Based on Adrian & Shin (2010) procyclical leverage theory
 and BIS (2024) prime broker-hedge fund nexus research.
 
-LCI = (HF_Margin_Loans / HF_AUM_Proxy) × (SP500 / MA_252(SP500))
+LCI = (HF_Margin_Loans / HF_AUM_Proxy) × (MarketIndex / MA_252(MarketIndex))
+
+Market index can be configured via spec.market_index:
+- "^W5000" (default): Wilshire 5000 - broad US equity market
+- "^SPX": S&P 500 - large cap US equities
 
 Key signals:
 - LCI > 75th percentile: Expansion regime (peak risk)
@@ -36,6 +40,9 @@ class LeverageCycleSpec:
 
     name: str = "default"
     description: str = "Default leverage cycle specification"
+
+    # Market index selection
+    market_index: str = "^SPX"  # Options: "^W5000" (Wilshire 5000) or "^SPX" (S&P 500)
 
     # AUM proxy calibration
     # TODO: Replace static hf_share_of_equity with data-driven approach using:
@@ -108,14 +115,14 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
             ),
             version="1.0.0",
             paper_reference="Adrian & Shin (2010); BIS (2024); Brunnermeier & Pedersen (2009)",
-            data_sources=["FRED (BOGZ1FL624123035Q, SP500, WILL5000PRFC)"],
+            data_sources=["FRED (BOGZ1FL624123035Q)", "Yahoo Finance (^GSPC, ^W5000)"],
             update_frequency="quarterly",
             lookback_periods=40,  # 10 years of quarterly data
         )
 
     def get_required_data_sources(self) -> list[str]:
         """Document data sources needed."""
-        return ["hf_margin_loans", "sp500", "wilshire5000"]
+        return ["hf_margin_loans", "^W5000", "wilshire5000"]
 
     def fetch_data(
         self,
@@ -127,26 +134,36 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
 
         Fetches from FRED:
         - BOGZ1FL624123035Q: Hedge Fund Margin Loans (quarterly)
-        - SP500: S&P 500 Index (daily)
-        - WILL5000PRFC: Wilshire 5000 Total Market Cap (weekly)
+
+        Fetches from Yahoo Finance:
+        - ^GSPC: S&P 500 Index (daily)
+        - ^W5000: Wilshire 5000 Total Market Index (FRED deprecated ^W5000)
         """
         from ...core import DataRegistry
 
         registry = DataRegistry.get_instance()
 
-        # Fetch FRED series
+        # Fetch FRED series (only hedge fund margin loans)
         fred_series = [
             "BOGZ1FL624123035Q",  # HF margin loans
-            "SP500",  # S&P 500
-            "WILL5000PRFC",  # Wilshire 5000 (for AUM proxy)
         ]
 
         try:
-            macro_data = registry.get_macro_series(fred_series, start_date)
+            macro_data = registry.get_macro_series(fred_series, start_date, end_date)
         except Exception:
             macro_data = pl.DataFrame({"date": []})
 
-        return {"macro_data": macro_data}
+        # Fetch S&P 500 and Wilshire 5000 from Yahoo Finance
+        try:
+            yf_data = registry.get_yahoo_finance_series(["^SPX", "^W5000"], start_date, end_date)
+        except Exception as e:
+            print(f"Warning: Failed to fetch data from Yahoo Finance: {e}")
+            yf_data = pl.DataFrame({"date": []})
+
+        return {
+            "fred_data": macro_data,
+            "market_data": yf_data,
+        }
 
     def calculate(
         self,
@@ -169,18 +186,19 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
         elif self._spec is None:
             self._spec = LeverageCycleSpec()
 
-        macro_data = data.get("macro_data", pl.DataFrame())
+        fred_data = data.get("fred_data", pl.DataFrame())
+        market_data = data.get("market_data", pl.DataFrame())
 
-        if macro_data.height == 0:
+        if fred_data.height == 0 or market_data.height == 0:
             return IndicatorResult(
                 indicator_name="prime_leverage_cycle",
                 calculation_date=datetime.now(),
                 data=pl.DataFrame(),
-                metadata={"error": "No macro data available"},
+                metadata={"error": "Insufficient data (missing FRED or market data)"},
             )
 
         # Process the data
-        result_df = self._calculate_lci(macro_data)
+        result_df = self._calculate_lci(fred_data, market_data)
 
         if result_df.height == 0:
             return IndicatorResult(
@@ -212,89 +230,119 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
             },
         )
 
-    def _calculate_lci(self, macro_data: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_lci(self, fred_data: pl.DataFrame, market_data: pl.DataFrame) -> pl.DataFrame:
         """
-        Calculate Leverage Cycle Index from FRED data.
+        Calculate Leverage Cycle Index from separate FRED and market data.
 
         Steps:
-        1. Calculate market valuation (SP500 / MA_252)
-        2. Construct HF AUM proxy (hybrid method)
-        3. Calculate leverage ratio
-        4. Compute LCI = leverage_ratio × market_valuation
-        5. Add derivative indicators (velocity, z-score, regime)
+        1. Calculate market valuation (MarketIndex / MA_252) on daily market data
+        2. Resample market data to quarterly (end-of-quarter values)
+        3. Join quarterly market data with FRED quarterly data
+        4. Construct HF AUM proxy (hybrid method using selected market index)
+        5. Calculate leverage ratio
+        6. Compute LCI = leverage_ratio × market_valuation
+        7. Add derivative indicators (velocity, z-score, regime)
         """
         # Check for required columns
-        required = ["date"]
-        has_margin = "BOGZ1FL624123035Q" in macro_data.columns
-        has_sp500 = "SP500" in macro_data.columns
-        has_wilshire = "WILL5000PRFC" in macro_data.columns
+        has_margin = "BOGZ1FL624123035Q" in fred_data.columns if fred_data.height > 0 else False
+        market_idx = self._spec.market_index
+        has_market_idx = market_idx in market_data.columns if market_data.height > 0 else False
 
-        if not (has_margin and has_sp500):
+        if not (has_margin and has_market_idx):
             return pl.DataFrame()
 
-        # Ensure date column is proper datetime
-        df = macro_data.with_columns(pl.col("date").cast(pl.Date))
+        # Step 1: Process market data - calculate rolling mean and market valuation
+        market_df = market_data.with_columns(pl.col("date").cast(pl.Date)).sort("date")
 
-        # Step 1: Calculate SP500 moving average and market valuation (daily)
-        if has_sp500:
-            df = df.sort("date").with_columns([
-                pl.col("SP500")
-                .rolling_mean(window_size=self._spec.ma_window_days)
-                .alias("sp500_ma252"),
-            ]).with_columns([
-                (pl.col("SP500") / pl.col("sp500_ma252")).alias("market_valuation")
-            ])
+        # Calculate rolling mean and market valuation for selected index
+        market_df = market_df.with_columns([
+            pl.col(market_idx)
+            .rolling_mean(window_size=self._spec.ma_window_days)
+            .alias(f"{market_idx}_ma252"),
+        ]).with_columns([
+            (pl.col(market_idx) / pl.col(f"{market_idx}_ma252")).alias("market_valuation")
+        ]).with_columns([
+            pl.col("market_valuation").forward_fill()
+        ])
 
-        # Step 2: Aggregate to quarterly
-        df = df.with_columns([
+        # Step 2: Resample market data to quarterly (last trading day of each quarter)
+        market_df = market_df.with_columns([
             pl.col("date").dt.year().alias("year"),
             pl.col("date").dt.quarter().alias("quarter"),
         ])
 
-        # Group by quarter and get end-of-quarter values
-        quarterly = df.group_by(["year", "quarter"]).agg([
-            pl.col("date").max().alias("date"),
-            pl.col("SP500").last().alias("sp500_qtr_end"),
+        market_quarterly = market_df.group_by(["year", "quarter"]).agg([
+            pl.col("date").max().alias("market_date"),
+            pl.col(market_idx).last().alias("market_idx_qtr_end"),
             pl.col("market_valuation").last().alias("market_valuation"),
-            pl.col("BOGZ1FL624123035Q").last().alias("hf_margin_loans"),
-            pl.col("WILL5000PRFC").last().alias("total_equity_mcap") if has_wilshire else pl.lit(None).alias("total_equity_mcap"),
-        ]).sort("date")
+        ]).sort("market_date")
 
-        # Filter out rows with null margin loan data
-        quarterly = quarterly.filter(pl.col("hf_margin_loans").is_not_null())
+        # Step 3: Process FRED data - filter to valid margin loans (non-null and non-zero)
+        fred_df = fred_data.with_columns(pl.col("date").cast(pl.Date)).sort("date")
+
+        fred_df = fred_df.filter(
+            (pl.col("BOGZ1FL624123035Q").is_not_null()) &
+            (pl.col("BOGZ1FL624123035Q") > 0)
+        )
+
+        if fred_df.height == 0:
+            return pl.DataFrame()
+
+        fred_df = fred_df.with_columns([
+            pl.col("date").dt.year().alias("year"),
+            pl.col("date").dt.quarter().alias("quarter"),
+        ])
+
+        # FRED reports on specific dates (often start of quarter), extract year/quarter
+        fred_quarterly = fred_df.select([
+            "year",
+            "quarter",
+            pl.col("date").alias("fred_date"),
+            pl.col("BOGZ1FL624123035Q").alias("hf_margin_loans"),
+        ])
+
+        # Step 4: Join quarterly market data with FRED data on year/quarter
+        quarterly = fred_quarterly.join(
+            market_quarterly,
+            on=["year", "quarter"],
+            how="inner"  # Only keep quarters with both FRED and market data
+        ).sort("market_date")
+
+        # Use market_date as the primary date (end of quarter)
+        quarterly = quarterly.with_columns([
+            pl.col("market_date").alias("date")
+        ]).drop(["market_date", "fred_date"])
 
         if quarterly.height == 0:
             return pl.DataFrame()
 
-        # Step 3: Construct HF AUM proxy (hybrid method)
+        # Step 5: Construct HF AUM proxy (hybrid method using selected market index)
         quarterly = quarterly.with_columns([
-            # Method 1: Market cap based
-            (pl.col("total_equity_mcap") * self._spec.hf_share_of_equity)
+            # Method 1: Market cap based (using selected index as proxy for total market)
+            (pl.col("market_idx_qtr_end") * self._spec.hf_share_of_equity)
             .alias("aum_proxy_method1"),
             # Method 2: Leverage ratio based
             (pl.col("hf_margin_loans") / self._spec.historical_leverage)
             .alias("aum_proxy_method2"),
         ])
 
-        # Hybrid: average of both methods (handle nulls)
+        # Hybrid: average of both methods
         quarterly = quarterly.with_columns([
-            pl.when(pl.col("aum_proxy_method1").is_not_null())
-            .then((pl.col("aum_proxy_method1") + pl.col("aum_proxy_method2")) / 2)
-            .otherwise(pl.col("aum_proxy_method2"))
+            ((pl.col("aum_proxy_method1") + pl.col("aum_proxy_method2")) / 2)
             .alias("hf_aum_proxy")
         ])
 
-        # Step 4: Calculate leverage ratio
+        # Step 6: Calculate leverage ratio
         quarterly = quarterly.with_columns([
             (pl.col("hf_margin_loans") / pl.col("hf_aum_proxy")).alias("leverage_ratio")
         ])
 
-        # Step 5: Calculate LCI
+        # Step 7: Calculate LCI
         quarterly = quarterly.with_columns([
             (pl.col("leverage_ratio") * pl.col("market_valuation")).alias("lci")
         ])
 
-        # Step 6: Calculate derivative indicators
+        # Step 8: Calculate derivative indicators
         quarterly = quarterly.with_columns([
             # Velocity (QoQ % change)
             (pl.col("lci").pct_change() * 100).alias("lci_velocity"),
@@ -313,11 +361,17 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
             .alias("lci_zscore")
         ])
 
-        # Step 7: Calculate regime classification using historical percentiles
+        # Step 9: Calculate regime classification using historical percentiles
         lci_values = quarterly.filter(pl.col("lci").is_not_null())["lci"]
         if lci_values.len() > 0:
             p25 = lci_values.quantile(self._spec.contraction_percentile)
             p75 = lci_values.quantile(self._spec.expansion_percentile)
+
+            # Calculate percentile rank for each observation (0-100 scale)
+            quarterly = quarterly.with_columns([
+                (pl.col("lci").rank(method="average") / lci_values.len() * 100)
+                .alias("lci_percentile")
+            ])
 
             quarterly = quarterly.with_columns([
                 pl.when(pl.col("lci") > p75)
@@ -328,7 +382,13 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
                 .alias("regime")
             ])
         else:
-            quarterly = quarterly.with_columns([pl.lit("Unknown").alias("regime")])
+            quarterly = quarterly.with_columns([
+                pl.lit(None).alias("lci_percentile"),
+                pl.lit("Unknown").alias("regime")
+            ])
+
+        # Rename market_idx_qtr_end to have the actual index name for clarity
+        quarterly = quarterly.rename({"market_idx_qtr_end": f"{market_idx}_qtr_end"})
 
         # Select final output columns
         return quarterly.select([
@@ -336,11 +396,12 @@ class PrimeLeverageCycleIndicator(BaseIndicator):
             "hf_margin_loans",
             "hf_aum_proxy",
             "leverage_ratio",
-            "sp500_qtr_end",
+            f"{market_idx}_qtr_end",
             "market_valuation",
             "lci",
             "lci_velocity",
             "lci_zscore",
+            "lci_percentile",
             "regime",
         ])
 

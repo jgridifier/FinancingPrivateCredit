@@ -528,6 +528,91 @@ class DataRegistry:
         self._session_cache[session_key] = data
         return data
 
+    def get_yahoo_finance_series(
+        self,
+        tickers: list[str],
+        start_date: str,
+        end_date: Optional[str] = None,
+    ) -> pl.DataFrame:
+        """
+        Get Yahoo Finance data series.
+
+        Args:
+            tickers: List of Yahoo Finance ticker symbols (e.g., ["^W5000", "^GSPC"])
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date (defaults to today)
+
+        Returns:
+            DataFrame with date column and one column per ticker (using Close prices)
+        """
+        import yfinance as yf
+        from datetime import datetime
+
+        # Sort tickers for consistent caching
+        tickers_key = ",".join(sorted(tickers))
+        session_key = f"yfinance_{tickers_key}_{start_date}_{end_date}"
+
+        if session_key in self._session_cache:
+            return self._session_cache[session_key]
+
+        # Check persistent cache
+        end_dt = end_date or datetime.now().strftime("%Y-%m-%d")
+        source_type = "fred_daily"  # Use same TTL as daily FRED data
+
+        cached = self._cache.get(
+            source_type,
+            tickers=tickers_key,
+            start_date=start_date,
+            end_date=end_dt,
+        )
+        if cached is not None:
+            self._session_cache[session_key] = cached
+            return cached
+
+        # Fetch fresh data from Yahoo Finance
+        print(f"Fetching Yahoo Finance data: {tickers}...")
+        dfs = []
+
+        for ticker in tickers:
+            try:
+                yf_ticker = yf.Ticker(ticker)
+                hist = yf_ticker.history(start=start_date, end=end_dt)
+
+                if not hist.empty:
+                    # Convert to polars DataFrame
+                    df = pl.DataFrame({
+                        "date": pl.Series([d.date() for d in hist.index], dtype=pl.Date),
+                        ticker: pl.Series(hist["Close"].values, dtype=pl.Float64)
+                    })
+                    dfs.append(df)
+                else:
+                    print(f"Warning: No data returned for {ticker}")
+            except Exception as e:
+                print(f"Warning: Failed to fetch {ticker} from Yahoo Finance: {e}")
+
+        if not dfs:
+            return pl.DataFrame({"date": []})
+
+        # Join all tickers on date using outer join
+        result = dfs[0]
+        for df in dfs[1:]:
+            result = result.join(df, on="date", how="outer_coalesce")
+
+        result = result.sort("date")
+
+        # Cache result
+        if result.height > 0:
+            self._cache.set(
+                result,
+                source_type,
+                tickers=tickers_key,
+                start_date=start_date,
+                end_date=end_dt,
+            )
+
+        self._session_cache[session_key] = result
+        return result
+
     def get_data_quality_summary(self) -> pl.DataFrame:
         """
         Get data quality summary for all banks.
