@@ -76,6 +76,7 @@ from . import funding_stability
 from . import FASAR
 from . import prime_leverage_cycle
 from . import prime_rehypo_liquidity
+from . import prime_leverage_v2
 
 __all__ = [
     # Core base classes
