@@ -1,0 +1,49 @@
+{
+  "spec": "default",
+  "n_observations": 51.0,
+  "date_range": {
+    "start": "2012-10-01",
+    "end": "2025-04-01"
+  },
+  "summary": {
+    "pb_lead_mean": 0.01286624441600225,
+    "pb_lead_std": 0.036369386873464575,
+    "pb_intensity_g_mean": 0.008913130513801657,
+    "pb_intensity_g_std": 0.06928383238458388,
+    "dealer_supply_g_mean": 0.017084197764042627,
+    "dealer_supply_g_std": 0.07074405137852029,
+    "pct_accelerating": 0.3137254901960784,
+    "pct_stable": 0.37254901960784315,
+    "pct_decelerating": 0.3137254901960784
+  },
+  "current_regime": "Accelerating",
+  "current_signal": {
+    "signal": 1.0,
+    "reason": "Improving prime balances/revenue momentum likely 1-2 quarters ahead",
+    "regime": "Accelerating",
+    "pb_lead_z": 0.34729385041147925,
+    "stress_flag": 0.0
+  },
+  "attribution": {
+    "hf_demand_contribution": 0.01433358939844536,
+    "hf_demand_pct": 41.658507387679236,
+    "lagged_intensity_contribution": 0.00503692113732801,
+    "lagged_intensity_pct": 14.639083803621103,
+    "dealer_supply_contribution": 0.015036841760974085,
+    "dealer_supply_pct": 43.70240880869966,
+    "pb_lead_total": 0.034407352296747455
+  },
+  "forecasts": {
+    "t_plus_1": {
+      "forecast": 0.027945019932523893,
+      "lower_bound": -0.008424366940940682,
+      "upper_bound": 0.06431440680598846
+    },
+    "t_plus_2": {
+      "forecast": 0.023636798356374854,
+      "lower_bound": -0.030917281953822005,
+      "upper_bound": 0.0781908786665717
+    }
+  },
+  "weekly_nowcast_available": 1.0
+}

@@ -441,6 +441,13 @@ class PrimeLeverageV2Indicator(BaseIndicator):
         """
         features_data = []
 
+        def safe_mean(series: pl.Series) -> float | None:
+            """Convert polars mean to Python float or None."""
+            val = series.mean()
+            if val is None or (hasattr(val, 'is_nan') and val.is_nan()):
+                return None
+            return float(val)
+
         # Process CFTC COT data
         if weekly_cot.height > 0:
             # Get unique dates
@@ -462,17 +469,17 @@ class PrimeLeverageV2Indicator(BaseIndicator):
                 feature_row = {
                     "date": report_date,
                     "equity_net_z": (
-                        equity_z["net_pct_oi_z_5y"].mean()
+                        safe_mean(equity_z["net_pct_oi_z_5y"])
                         if equity_z.height > 0 and "net_pct_oi_z_5y" in equity_z.columns
                         else None
                     ),
                     "rates_net_z": (
-                        rates_z["net_pct_oi_z_5y"].mean()
+                        safe_mean(rates_z["net_pct_oi_z_5y"])
                         if rates_z.height > 0 and "net_pct_oi_z_5y" in rates_z.columns
                         else None
                     ),
                     "fx_net_z": (
-                        fx_z["net_pct_oi_z_5y"].mean()
+                        safe_mean(fx_z["net_pct_oi_z_5y"])
                         if fx_z.height > 0 and "net_pct_oi_z_5y" in fx_z.columns
                         else None
                     ),
@@ -506,12 +513,12 @@ class PrimeLeverageV2Indicator(BaseIndicator):
 
                 if matching_idx is not None:
                     features_data[matching_idx]["dealer_financing_z"] = (
-                        repo_z["value_z_3y"].mean()
+                        safe_mean(repo_z["value_z_3y"])
                         if repo_z.height > 0 and "value_z_3y" in repo_z.columns
                         else None
                     )
                     features_data[matching_idx]["settlement_friction_z"] = (
-                        fails_z["value_z_3y"].mean()
+                        safe_mean(fails_z["value_z_3y"])
                         if fails_z.height > 0 and "value_z_3y" in fails_z.columns
                         else None
                     )
@@ -522,12 +529,12 @@ class PrimeLeverageV2Indicator(BaseIndicator):
                         "rates_net_z": None,
                         "fx_net_z": None,
                         "dealer_financing_z": (
-                            repo_z["value_z_3y"].mean()
+                            safe_mean(repo_z["value_z_3y"])
                             if repo_z.height > 0 and "value_z_3y" in repo_z.columns
                             else None
                         ),
                         "settlement_friction_z": (
-                            fails_z["value_z_3y"].mean()
+                            safe_mean(fails_z["value_z_3y"])
                             if fails_z.height > 0 and "value_z_3y" in fails_z.columns
                             else None
                         ),
@@ -536,9 +543,17 @@ class PrimeLeverageV2Indicator(BaseIndicator):
         if not features_data:
             return pl.DataFrame()
 
-        return pl.DataFrame(features_data).with_columns(
-            pl.col("date").cast(pl.Date)
-        ).sort("date")
+        # Create DataFrame with explicit schema to handle None values
+        schema = {
+            "date": pl.Date,
+            "equity_net_z": pl.Float64,
+            "rates_net_z": pl.Float64,
+            "fx_net_z": pl.Float64,
+            "dealer_financing_z": pl.Float64,
+            "settlement_friction_z": pl.Float64,
+        }
+
+        return pl.DataFrame(features_data, schema=schema).sort("date")
 
     def _aggregate_weekly_to_quarterly(self, weekly_features: pl.DataFrame) -> pl.DataFrame:
         """Aggregate weekly features to quarterly using within-quarter mean."""
