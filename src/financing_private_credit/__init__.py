@@ -19,7 +19,7 @@ See `indicators` subpackage for the registry API:
 
 from .data import FREDDataFetcher, PrivateCreditData
 from .macro import MacroDataFetcher, BankSystemData
-from .bank_data import BankDataCollector, SyntheticBankData, TARGET_BANKS
+from .bank_data import BankDataCollector, TARGET_BANKS
 
 # Import from demand_system indicator (paper replication)
 from .indicators.demand_system import (
@@ -76,7 +76,6 @@ __all__ = [
     "BankSystemData",
     # Bank data
     "BankDataCollector",
-    "SyntheticBankData",
     "TARGET_BANKS",
     # Demand System (Paper Replication)
     "DemandSystemIndicator",

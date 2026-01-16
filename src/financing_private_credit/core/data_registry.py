@@ -1082,136 +1082,111 @@ class DataRegistry:
         end_date: str,
     ) -> pl.DataFrame:
         """
-        Fetch CFTC data for a single contract using Nasdaq Data Link API.
+        Fetch CFTC data for a single contract using the direct CFTC Public Reporting API.
 
         Uses the CFTC Traders in Financial Futures (TFF) report which segments
         positions by Dealers, Asset Managers, Leveraged Funds, etc.
+
+        API: https://publicreporting.cftc.gov/api/id/gpe5-46if
         """
         import requests
-        import os
-        from datetime import datetime
+        from io import StringIO
 
-        # Get API key from environment
-        api_key = os.environ.get("NASDAQ_API_KEY", "")
-        if not api_key:
-            print(f"  Warning: No NASDAQ_API_KEY found, skipping {contract}")
-            return pl.DataFrame()
-
-        # Map contract codes to Nasdaq Data Link dataset codes
-        # CFTC TFF reports are available via CFTC database on Nasdaq
-        contract_dataset_map = {
-            "ES": "CFTC/ES_FO_L_ALL",     # E-mini S&P 500
-            "NQ": "CFTC/NQ_FO_L_ALL",     # E-mini Nasdaq-100
-            "TU": "CFTC/TU_FO_L_ALL",     # 2-Year Treasury
-            "FV": "CFTC/FV_FO_L_ALL",     # 5-Year Treasury
-            "TY": "CFTC/TY_FO_L_ALL",     # 10-Year Treasury
-            "US": "CFTC/US_FO_L_ALL",     # 30-Year Treasury
-            "EC": "CFTC/EC_FO_L_ALL",     # Euro FX
-            "JY": "CFTC/JY_FO_L_ALL",     # Japanese Yen
+        # Map contract codes to CFTC contract market codes
+        contract_code_map = {
+            "ES": "13874A",   # E-MINI S&P 500
+            "NQ": "209742",   # NASDAQ MINI
+            "TU": "042601",   # UST 2Y NOTE
+            "FV": "044601",   # UST 5Y NOTE
+            "TY": "043602",   # UST 10Y NOTE
+            "US": "020601",   # U.S. TREASURY BONDS
+            "EC": "099741",   # EURO FX
+            "JY": "097741",   # JAPANESE YEN
         }
 
-        dataset_code = contract_dataset_map.get(contract)
-        if not dataset_code:
-            print(f"  Warning: No Nasdaq dataset mapping for {contract}")
+        cftc_code = contract_code_map.get(contract)
+        if not cftc_code:
+            print(f"  Warning: No CFTC mapping for {contract}")
             return pl.DataFrame()
 
         try:
-            # Build API URL for Nasdaq Data Link
-            base_url = "https://data.nasdaq.com/api/v3/datasets"
-            url = f"{base_url}/{dataset_code}/data.json"
+            # Build CFTC Public Reporting API URL
+            base_url = "https://publicreporting.cftc.gov/api/id/gpe5-46if.csv"
+
+            # Select columns we need for leveraged fund positions
+            select_cols = ",".join([
+                "report_date_as_yyyy_mm_dd",
+                "market_and_exchange_names",
+                "open_interest_all",
+                "lev_money_positions_long",
+                "lev_money_positions_short",
+                "pct_of_oi_lev_money_long",
+                "pct_of_oi_lev_money_short",
+            ])
+
+            # Build query with date filter
+            start_dt = start_date or "2015-01-01"
+            where_clause = f"cftc_contract_market_code = '{cftc_code}' AND report_date_as_yyyy_mm_dd > '{start_dt}'"
 
             params = {
-                "api_key": api_key,
-                "start_date": start_date or "2015-01-01",
-                "end_date": end_date,
+                "$select": select_cols,
+                "$where": where_clause,
+                "$limit": 10000,
+                "$order": "report_date_as_yyyy_mm_dd DESC",
             }
 
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(base_url, params=params, timeout=60)
 
             if response.status_code == 200:
-                data = response.json()
-                dataset = data.get("dataset_data", {})
-                column_names = dataset.get("column_names", [])
-                rows = dataset.get("data", [])
+                # Parse CSV response
+                csv_data = StringIO(response.text)
+                df = pl.read_csv(csv_data)
 
-                if not rows:
-                    print(f"  Warning: No data returned for {contract}")
+                if df.height == 0:
+                    print(f"  Warning: No CFTC data returned for {contract}")
                     return pl.DataFrame()
 
-                # Parse the data
-                # TFF format typically includes: Date, Open Interest, Dealer Long, Dealer Short,
-                # Asset Manager Long, Asset Manager Short, Leveraged Long, Leveraged Short, etc.
-                df = pl.DataFrame(rows, schema=column_names, orient="row")
+                # Standardize column names
+                df = df.with_columns([
+                    pl.col("report_date_as_yyyy_mm_dd").str.slice(0, 10).str.to_date("%Y-%m-%d").alias("report_date"),
+                    pl.col("lev_money_positions_long").cast(pl.Int64).alias("leveraged_long"),
+                    pl.col("lev_money_positions_short").cast(pl.Int64).alias("leveraged_short"),
+                    pl.col("open_interest_all").cast(pl.Int64).alias("open_interest"),
+                    pl.lit(contract).alias("contract"),
+                ])
 
-                # Standardize column names and extract leveraged positions
-                df = df.with_columns(pl.col("Date").cast(pl.Date).alias("report_date"))
+                # Calculate net position and percentage
+                df = df.with_columns([
+                    (pl.col("leveraged_long") - pl.col("leveraged_short")).alias("leveraged_net"),
+                    ((pl.col("leveraged_long") - pl.col("leveraged_short")) /
+                     pl.col("open_interest")).alias("leveraged_net_pct_oi"),
+                ])
 
-                # Find leveraged fund columns (naming varies by dataset)
-                lev_long_col = None
-                lev_short_col = None
-                oi_col = None
+                print(f"  Fetched {df.height} CFTC records for {contract}")
 
-                for col in column_names:
-                    col_lower = col.lower()
-                    if "leveraged" in col_lower or "lev" in col_lower:
-                        if "long" in col_lower:
-                            lev_long_col = col
-                        elif "short" in col_lower:
-                            lev_short_col = col
-                    if "open interest" in col_lower or "oi" in col_lower:
-                        oi_col = col
-
-                # If leveraged columns not found, use money manager or other speculative
-                if lev_long_col is None:
-                    for col in column_names:
-                        if "money" in col.lower() and "long" in col.lower():
-                            lev_long_col = col
-                        elif "money" in col.lower() and "short" in col.lower():
-                            lev_short_col = col
-
-                if lev_long_col and lev_short_col:
-                    df = df.with_columns([
-                        pl.col(lev_long_col).alias("leveraged_long"),
-                        pl.col(lev_short_col).alias("leveraged_short"),
-                        (pl.col(lev_long_col) - pl.col(lev_short_col)).alias("leveraged_net"),
-                    ])
-
-                    if oi_col:
-                        df = df.with_columns([
-                            pl.col(oi_col).alias("open_interest"),
-                            ((pl.col(lev_long_col) - pl.col(lev_short_col)) / pl.col(oi_col))
-                            .alias("leveraged_net_pct_oi"),
-                        ])
-                    else:
-                        df = df.with_columns([
-                            pl.lit(1).alias("open_interest"),
-                            pl.lit(0.0).alias("leveraged_net_pct_oi"),
-                        ])
-
-                    df = df.with_columns(pl.lit(contract).alias("contract"))
-
-                    return df.select([
-                        "report_date", "contract", "leveraged_long", "leveraged_short",
-                        "leveraged_net", "open_interest", "leveraged_net_pct_oi"
-                    ])
+                return df.select([
+                    "report_date", "contract", "leveraged_long", "leveraged_short",
+                    "leveraged_net", "open_interest", "leveraged_net_pct_oi"
+                ]).sort("report_date")
 
             else:
-                print(f"  Warning: API returned status {response.status_code} for {contract}")
-
-            return pl.DataFrame()
+                print(f"  Warning: CFTC API returned status {response.status_code} for {contract}")
+                return pl.DataFrame()
 
         except Exception as e:
-            print(f"  Warning: Could not fetch {contract} from Nasdaq: {e}")
+            print(f"  Warning: Could not fetch {contract} from CFTC: {e}")
             return pl.DataFrame()
-
-    # Note: Synthetic data generation removed - all data should be from real APIs
 
     def _add_cot_derived_features(self, df: pl.DataFrame) -> pl.DataFrame:
         """Add derived features to COT data (changes, z-scores)."""
         if df.height == 0:
             return df
 
+        # Sort by contract and date before rolling operations
+        df = df.sort(["contract", "report_date"])
+
         # Add changes and z-scores per contract
+        # Use 52 weeks min window with 10 min_periods to avoid null early values
         result = df.with_columns([
             # 4-week and 8-week changes
             pl.col("leveraged_net")
@@ -1222,26 +1197,33 @@ class DataRegistry:
             .shift(8)
             .over("contract")
             .alias("net_8w_ago"),
-            # Rolling stats for z-score (260 weeks ≈ 5 years)
+            # Rolling stats for z-score (52 weeks with min_periods=10)
             pl.col("leveraged_net_pct_oi")
-            .rolling_mean(window_size=260)
+            .rolling_mean(window_size=52, min_periods=10)
             .over("contract")
-            .alias("net_pct_oi_mean_5y"),
+            .alias("net_pct_oi_mean"),
             pl.col("leveraged_net_pct_oi")
-            .rolling_std(window_size=260)
+            .rolling_std(window_size=52, min_periods=10)
             .over("contract")
-            .alias("net_pct_oi_std_5y"),
+            .alias("net_pct_oi_std"),
         ])
 
+        # Calculate z-score with fallback for zero std
         result = result.with_columns([
             (pl.col("leveraged_net") - pl.col("net_4w_ago")).alias("chg_4w"),
             (pl.col("leveraged_net") - pl.col("net_8w_ago")).alias("chg_8w"),
-            ((pl.col("leveraged_net_pct_oi") - pl.col("net_pct_oi_mean_5y"))
-             / pl.col("net_pct_oi_std_5y")).alias("net_pct_oi_z_5y"),
+            pl.when(pl.col("net_pct_oi_std") > 0.0001)
+            .then(
+                (pl.col("leveraged_net_pct_oi") - pl.col("net_pct_oi_mean"))
+                / pl.col("net_pct_oi_std")
+            )
+            .otherwise(pl.lit(0.0))
+            .fill_null(0.0)
+            .alias("net_pct_oi_z_5y"),
         ])
 
         # Drop intermediate columns
-        return result.drop(["net_4w_ago", "net_8w_ago", "net_pct_oi_mean_5y", "net_pct_oi_std_5y"])
+        return result.drop(["net_4w_ago", "net_8w_ago", "net_pct_oi_mean", "net_pct_oi_std"])
 
     def get_nyfed_primary_dealer_stats(
         self,

@@ -347,6 +347,22 @@ These estimates extend the indicator beyond the official Z.1 release:
         report += """
 **Interpretation**: Shadow estimates bridge the gap between the last official Z.1 release and the current quarter. These estimates use weekly CFTC positioning and NY Fed dealer statistics as leading indicators. Uncertainty bands are wider for quarters with less data coverage.
 
+### 2.3 Bank Disclosure Pulse (GS / MS / JPM)
+
+The disclosure pulse incorporates prime-relevant metrics from major bank earnings:
+
+| Bank | Metric | Source | Prime Attribution |
+|------|--------|--------|-------------------|
+| **Goldman Sachs** | Equities Financing Net Revenues | SEC Exhibit 99.2 | "Prime and portfolio financing" |
+| **Morgan Stanley** | Equity Net Revenues | Earnings PDF | "Financing revenues from higher client balances in prime brokerage" |
+| **JPMorgan** | Equity Markets Revenue | Earnings PDF | Revenue driven "particularly in Prime" |
+
+**Current Disclosure Status**:
+- Coverage completeness (c_t): Pending next earnings cycle
+- Disclosure pulse (p_t): Will update as banks report quarterly results
+
+*Note: Bank disclosures provide higher information content than weekly proxies. When GS/MS/JPM report, the nowcast uncertainty bands tighten significantly.*
+
 """
     else:
         report += f"""### 2.1 Shadow Extension Status
@@ -457,7 +473,7 @@ Where:
 ### 5.4 Limitations
 
 - Shadow estimates are model-dependent and should be interpreted with wider confidence bands
-- Weekly data uses synthetic representative values pending full API integration
+- Weekly CFTC data sourced from CFTC Public Reporting API (Traders in Financial Futures)
 - Estimates will be replaced with official Z.1 values when released
 
 ---

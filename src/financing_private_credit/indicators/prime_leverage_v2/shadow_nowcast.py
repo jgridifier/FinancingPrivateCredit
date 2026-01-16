@@ -90,8 +90,8 @@ class ShadowNowcaster:
 
     def build_weekly_factor(
         self,
-        weekly_cot: pl.DataFrame,
-        weekly_pd: pl.DataFrame,
+        weekly_cot: Optional[pl.DataFrame],
+        weekly_pd: Optional[pl.DataFrame],
     ) -> pl.DataFrame:
         """
         Build weekly leverage appetite factor from CFTC and NY Fed data.
@@ -104,6 +104,12 @@ class ShadowNowcaster:
             DataFrame with columns: date, x_raw, x_smooth
         """
         config = self.config
+
+        # Handle None inputs
+        if weekly_cot is None:
+            weekly_cot = pl.DataFrame()
+        if weekly_pd is None:
+            weekly_pd = pl.DataFrame()
 
         # Aggregate CFTC COT data to weekly factor
         cot_factor = self._build_cot_factor(weekly_cot)
@@ -210,25 +216,40 @@ class ShadowNowcaster:
         """Add robust z-score using median/MAD."""
         config = self.config
 
-        # Calculate rolling median and MAD per group
+        # Sort by date within each group before rolling calculations
+        date_col = "report_date" if "report_date" in df.columns else "date"
+        df = df.sort([group_col, date_col])
+
+        # Use a minimum window of 52 weeks (1 year) to ensure enough observations
+        min_window = min(window, 52)
+
+        # Calculate rolling median and std per group
         df = df.with_columns([
             pl.col(value_col)
-            .rolling_median(window_size=window)
+            .rolling_median(window_size=min_window, min_periods=10)
             .over(group_col)
             .alias(f"{value_col}_median"),
-            # MAD approximation using rolling std * 0.6745
             pl.col(value_col)
-            .rolling_std(window_size=window)
+            .rolling_std(window_size=min_window, min_periods=10)
             .over(group_col)
             .alias(f"{value_col}_std"),
         ])
 
-        # Robust z-score: (x - median) / (1.4826 * MAD)
-        # Approximating MAD ≈ std * 0.6745 for normal distribution
+        # Robust z-score with fallback for edge cases
+        # Replace zero std with a small value to avoid division by zero
         df = df.with_columns(
-            ((pl.col(value_col) - pl.col(f"{value_col}_median")) /
-             (config.mad_scale * pl.col(f"{value_col}_std") * 0.6745))
+            pl.when(pl.col(f"{value_col}_std") > 0.0001)
+            .then(
+                (pl.col(value_col) - pl.col(f"{value_col}_median")) /
+                (config.mad_scale * pl.col(f"{value_col}_std") * 0.6745)
+            )
+            .otherwise(pl.lit(0.0))
             .alias(f"{value_col}_z")
+        )
+
+        # Fill any remaining NaN values with 0
+        df = df.with_columns(
+            pl.col(f"{value_col}_z").fill_null(0.0)
         )
 
         return df

@@ -7,12 +7,12 @@
 
 **Current Signal: ACCELERATING (Positive)**
 
-The PB-LLI composite signal stands at **+5.85%** with a z-score of **+0.72**, indicating Improving prime balances/revenue momentum likely 1-2 quarters ahead.
+The PB-LLI composite signal stands at **+3.28%** with a z-score of **+0.37**, indicating Improving prime balances/revenue momentum likely 1-2 quarters ahead.
 
 | Metric | Value | Interpretation |
 |--------|-------|----------------|
-| PB_Lead | +5.85% | Above-average growth signal |
-| Z-Score | +0.72 | Positive |
+| PB_Lead | +3.28% | Above-average growth signal |
+| Z-Score | +0.37 | Positive |
 | Regime | Accelerating | Upper tercile |
 | Stress Flag | OFF | No acute stress |
 
@@ -32,9 +32,9 @@ The Fed Z.1 data through Q2 2025 shows:
 
 | Component | Contribution | Share |
 |-----------|-------------|-------|
-| HF Demand (Nowcast) | +3.84% | 65.7% |
-| Dealer Supply | +1.50% | 25.7% |
-| Lagged Intensity | +0.50% | 8.6% |
+| HF Demand (Nowcast) | +1.27% | 38.8% |
+| Dealer Supply | +1.50% | 45.9% |
+| Lagged Intensity | +0.50% | 15.4% |
 
 ---
 
@@ -57,11 +57,27 @@ These estimates extend the indicator beyond the official Z.1 release:
 
 | Quarter | Type | PB Intensity Growth | 95% CI | Completeness |
 |---------|------|---------------------|--------|--------------|
-| Q3'25 | Nowcast | -0.94% | [-33.63%, +31.75%] | 0% weekly |
-| Q4'25 | Nowcast | +0.93% | [-32.23%, +34.08%] | 0% weekly |
-| Q1'26 | Nowcast | +0.44% | [-33.17%, +34.06%] | 0% weekly |
+| Q3'25 | Shadow | +1.53% | [-15.95%, +19.00%] | 100% weekly |
+| Q4'25 | Nowcast | +0.76% | [-17.56%, +19.09%] | 100% weekly |
+| Q1'26 | Nowcast | +0.65% | [-31.81%, +33.10%] | 8% weekly |
 
 **Interpretation**: Shadow estimates bridge the gap between the last official Z.1 release and the current quarter. These estimates use weekly CFTC positioning and NY Fed dealer statistics as leading indicators. Uncertainty bands are wider for quarters with less data coverage.
+
+### 2.3 Bank Disclosure Pulse (GS / MS / JPM)
+
+The disclosure pulse incorporates prime-relevant metrics from major bank earnings:
+
+| Bank | Metric | Source | Prime Attribution |
+|------|--------|--------|-------------------|
+| **Goldman Sachs** | Equities Financing Net Revenues | SEC Exhibit 99.2 | "Prime and portfolio financing" |
+| **Morgan Stanley** | Equity Net Revenues | Earnings PDF | "Financing revenues from higher client balances in prime brokerage" |
+| **JPMorgan** | Equity Markets Revenue | Earnings PDF | Revenue driven "particularly in Prime" |
+
+**Current Disclosure Status**:
+- Coverage completeness (c_t): Pending next earnings cycle
+- Disclosure pulse (p_t): Will update as banks report quarterly results
+
+*Note: Bank disclosures provide higher information content than weekly proxies. When GS/MS/JPM report, the nowcast uncertainty bands tighten significantly.*
 
 ---
 
@@ -71,8 +87,8 @@ These estimates extend the indicator beyond the official Z.1 release:
 
 | Quarter | PB_Lead Forecast | 95% CI Lower | 95% CI Upper |
 |---------|------------------|--------------|--------------|
-| Q2'26 | +4.36% | -3.90% | +12.63% |
-| Q3'26 | +4.36% | -3.90% | +12.63% |
+| Q2'26 | +2.55% | -5.02% | +10.12% |
+| Q3'26 | +2.55% | -5.02% | +10.12% |
 
 ### 3.2 Outlook Interpretation
 
@@ -90,8 +106,8 @@ The model projects **continued positive momentum** over the next two quarters, t
 
 | Statistic | PB_Lead | PB Intensity Growth | Dealer Supply Growth |
 |-----------|---------|---------------------|---------------------|
-| Mean | +0.88% | +0.89% | +1.71% |
-| Std Dev | 4.22% | 6.93% | 7.07% |
+| Mean | +0.85% | +0.89% | +1.71% |
+| Std Dev | 3.86% | 6.93% | 7.07% |
 
 ### 4.2 Regime Distribution
 
@@ -103,14 +119,14 @@ The model projects **continued positive momentum** over the next two quarters, t
 
 | Quarter | PB_Lead | Regime |
 |---------|---------|--------|
-| Q3'23 | -0.10% | Stable |
-| Q4'23 | +0.11% | Stable |
-| Q1'24 | +6.85% | Accelerating |
-| Q2'24 | +1.21% | Stable |
-| Q3'24 | +0.64% | Stable |
-| Q4'24 | +4.74% | Accelerating |
-| Q1'25 | +1.11% | Stable |
-| Q2'25 | +5.85% | Accelerating |
+| Q3'23 | +3.06% | Accelerating |
+| Q4'23 | -2.10% | Decelerating |
+| Q1'24 | +4.06% | Accelerating |
+| Q2'24 | +1.95% | Stable |
+| Q3'24 | -1.95% | Decelerating |
+| Q4'24 | +3.49% | Accelerating |
+| Q1'25 | +1.60% | Stable |
+| Q2'25 | +3.28% | Accelerating |
 
 ---
 
@@ -145,7 +161,7 @@ Where:
 ### 5.4 Limitations
 
 - Shadow estimates are model-dependent and should be interpreted with wider confidence bands
-- Weekly data uses synthetic representative values pending full API integration
+- Weekly CFTC data sourced from CFTC Public Reporting API (Traders in Financial Futures)
 - Estimates will be replaced with official Z.1 values when released
 
 ---
