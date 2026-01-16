@@ -317,11 +317,16 @@ class ShadowNowcaster:
         """
         Fit ridge regression model for shadow estimation.
 
-        y_t = α + β₁·x̄_t + β₂·D_t + β₃·p_t + ε_t
+        Model: y_t = α + β₁·y_{t-1} + β₂·D_t + β₃·x̄_t + ε_t
 
-        For V1, we fit on available quarterly data. When weekly factor has low
-        correlation with target, we fall back to historical statistics-based
-        estimation.
+        Where:
+        - y_t = pb_intensity_g (log growth)
+        - y_{t-1} = lagged pb_intensity_g (AR(1) term)
+        - D_t = dealer_supply_g
+        - x̄_t = weekly leverage appetite factor
+
+        This follows the theoretical foundation with AR(1) dynamics
+        as the primary driver, supplemented by dealer supply and weekly signals.
 
         Returns:
             Model fit statistics
@@ -333,43 +338,46 @@ class ShadowNowcaster:
             return {"success": False, "reason": "insufficient_data"}
 
         # Prepare target variable: y_t = Δln(I_t)
-        y_series = quarterly_anchor.filter(
+        anchor_filtered = quarterly_anchor.filter(
             pl.col("pb_intensity_g").is_not_null()
-        )["pb_intensity_g"]
-        y = y_series.to_numpy()
+        )
+        y = anchor_filtered["pb_intensity_g"].to_numpy()
+
+        # Get lagged y for AR(1)
+        y_lagged = np.zeros_like(y)
+        y_lagged[1:] = y[:-1]
+        y_lagged[0] = y[0]  # Use first value for first obs
 
         # Get dealer supply if available
         dealer_g = None
-        if "dealer_supply_g" in quarterly_anchor.columns:
-            dealer_g = quarterly_anchor.filter(
-                pl.col("pb_intensity_g").is_not_null()
-            )["dealer_supply_g"].to_numpy()
+        if "dealer_supply_g" in anchor_filtered.columns:
+            dealer_g = anchor_filtered["dealer_supply_g"].to_numpy()
 
         # Winsorize target
         lower = np.percentile(y, config.winsorize_lower * 100)
         upper = np.percentile(y, config.winsorize_upper * 100)
         y_winsorized = np.clip(y, lower, upper)
 
-        # Prepare features
+        # Prepare features: [y_lagged, dealer_supply, weekly_factor]
         n_obs = len(y_winsorized)
-        X = np.zeros((n_obs, 2))  # x_bar, dealer_supply
+        X = np.zeros((n_obs, 3))
 
-        # Aggregate weekly factor to quarterly
-        quarters = quarterly_anchor.filter(
-            pl.col("pb_intensity_g").is_not_null()
-        ).select(["year", "quarter"]).to_dicts()
+        # Feature 1: Lagged y (AR(1) term) - most important!
+        X[:, 0] = y_lagged
 
+        # Feature 2: Dealer supply growth
+        if dealer_g is not None:
+            X[:, 1] = np.nan_to_num(dealer_g, nan=0.0)
+
+        # Feature 3: Aggregate weekly factor to quarterly
+        quarters = anchor_filtered.select(["year", "quarter"]).to_dicts()
         for i, q in enumerate(quarters):
             x_bar, _ = self.aggregate_weekly_to_quarter(
                 weekly_factor,
                 q["year"],
                 q["quarter"],
             )
-            X[i, 0] = x_bar
-
-        # Add dealer supply
-        if dealer_g is not None:
-            X[:, 1] = np.nan_to_num(dealer_g, 0)
+            X[i, 2] = x_bar
 
         # Standardize features
         X_mean = np.nanmean(X, axis=0)
@@ -382,14 +390,14 @@ class ShadowNowcaster:
 
         # Ridge regression: (X'X + λI)^{-1} X'y
         lambda_reg = config.ridge_lambda
-        I = np.eye(X_with_intercept.shape[1])
-        I[0, 0] = 0  # Don't regularize intercept
+        I_mat = np.eye(X_with_intercept.shape[1])
+        I_mat[0, 0] = 0  # Don't regularize intercept
 
         XtX = X_with_intercept.T @ X_with_intercept
         Xty = X_with_intercept.T @ y_winsorized
 
         try:
-            beta = np.linalg.solve(XtX + lambda_reg * I, Xty)
+            beta = np.linalg.solve(XtX + lambda_reg * I_mat, Xty)
         except np.linalg.LinAlgError:
             print("Warning: Ridge regression failed, using OLS")
             beta = np.linalg.lstsq(X_with_intercept, y_winsorized, rcond=None)[0]
@@ -404,28 +412,34 @@ class ShadowNowcaster:
         ss_tot = np.sum((y_winsorized - np.mean(y_winsorized)) ** 2)
         r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0
 
-        # Store historical statistics for fallback estimation
-        y_mean = float(np.mean(y))
-        y_std = float(np.std(y))
+        # Calculate individual feature R² contributions
+        # AR(1) alone
+        ar1_r2 = float(np.corrcoef(y_lagged[1:], y[1:])[0, 1] ** 2)
+
+        # Dealer correlation
         dealer_y_corr = 0.0
         if dealer_g is not None:
             valid_mask = ~np.isnan(dealer_g)
             if np.sum(valid_mask) > 5:
                 dealer_y_corr = float(np.corrcoef(y[valid_mask], dealer_g[valid_mask])[0, 1])
 
-        # Store model - include historical stats for robust estimation
+        # Historical statistics for fallback
+        y_mean = float(np.mean(y))
+        y_std = float(np.std(y))
+
+        # Store model coefficients with proper interpretation
         self._model_coefficients = {
-            "alpha": float(beta[0]),
-            "beta_x": float(beta[1]),
-            "beta_dealer": float(beta[2]) if len(beta) > 2 else 0.0,
+            "alpha": float(beta[0]),  # Intercept
+            "beta_ar1": float(beta[1]),  # AR(1) coefficient (lagged y)
+            "beta_dealer": float(beta[2]),  # Dealer supply coefficient
+            "beta_x": float(beta[3]) if len(beta) > 3 else 0.0,  # Weekly factor
             "X_mean": X_mean.tolist(),
             "X_std": X_std.tolist(),
-            # Historical statistics for fallback
+            # Historical statistics for robust estimation
             "y_mean": y_mean,
             "y_std": y_std,
             "dealer_y_corr": dealer_y_corr,
-            # AR(1) coefficient for mean-reversion estimation
-            "ar1_coef": float(np.corrcoef(y[:-1], y[1:])[0, 1]) if len(y) > 2 else 0.5,
+            "ar1_r2": ar1_r2,
         }
         self._residual_std = float(residual_std)
         self._model_fitted = True
@@ -434,6 +448,7 @@ class ShadowNowcaster:
             "success": True,
             "n_observations": n_obs,
             "r_squared": float(r_squared),
+            "ar1_r_squared": ar1_r2,
             "residual_std": float(residual_std),
             "y_mean": y_mean,
             "y_std": y_std,
@@ -492,54 +507,49 @@ class ShadowNowcaster:
 
         # Get model coefficients
         alpha = self._model_coefficients["alpha"]
-        beta_x = self._model_coefficients["beta_x"]
-        beta_dealer = self._model_coefficients["beta_dealer"]
+        beta_ar1 = self._model_coefficients.get("beta_ar1", 0.3)  # AR(1) coef
+        beta_dealer = self._model_coefficients.get("beta_dealer", 0.0)
+        beta_x = self._model_coefficients.get("beta_x", 0.0)
         y_mean = self._model_coefficients.get("y_mean", 0.01)
         y_std = self._model_coefficients.get("y_std", 0.07)
-        ar1_coef = self._model_coefficients.get("ar1_coef", 0.3)
-        dealer_y_corr = self._model_coefficients.get("dealer_y_corr", 0.3)
 
         X_mean = np.array(self._model_coefficients["X_mean"])
         X_std = np.array(self._model_coefficients["X_std"])
 
-        # ---- Hybrid Estimation Approach ----
+        # ---- Model-based Estimation ----
+        # y_t = α + β₁·y_{t-1} + β₂·D_t + β₃·x̄_t
 
-        # Component 1: AR(1) mean-reversion baseline
+        # Standardize inputs using training statistics
+        # Feature order: [y_lagged, dealer_supply, weekly_factor]
+
+        # Component 1: AR(1) term (lagged pb_intensity_g)
         if last_pb_intensity_g is not None:
-            # y_t = ar1 * y_{t-1} + (1-ar1) * y_mean + noise
-            ar1_estimate = ar1_coef * last_pb_intensity_g + (1 - ar1_coef) * y_mean
+            y_lag_standardized = (last_pb_intensity_g - X_mean[0]) / X_std[0] if X_std[0] > 0 else 0
         else:
-            ar1_estimate = y_mean
+            y_lag_standardized = 0  # Use mean (standardized to 0)
 
-        # Apply further mean-reversion for quarters further from official
-        reversion_factor = ar1_coef ** quarters_from_official
-        ar1_estimate = reversion_factor * (last_pb_intensity_g or y_mean) + (1 - reversion_factor) * y_mean
+        ar1_contribution = beta_ar1 * y_lag_standardized
 
-        # Component 2: Weekly factor contribution (when available)
+        # Component 2: Dealer supply
+        dealer_contribution = 0.0
+        if dealer_supply_g is not None and X_std[1] > 0:
+            dealer_standardized = (dealer_supply_g - X_mean[1]) / X_std[1]
+            dealer_contribution = beta_dealer * dealer_standardized
+
+        # Component 3: Weekly factor
         weekly_contribution = 0.0
-        if X_std[0] > 0 and omega_x > 0.3:
-            x_standardized = (x_bar - X_mean[0]) / X_std[0]
+        if omega_x > 0.3 and X_std[2] > 0:
+            x_standardized = (x_bar - X_mean[2]) / X_std[2]
             weekly_contribution = beta_x * x_standardized
 
-        # Component 3: Dealer supply adjustment
-        dealer_contribution = 0.0
-        if dealer_supply_g is not None:
-            # Use correlation-based adjustment
-            dealer_z = (dealer_supply_g - y_mean) / (y_std + 1e-6)
-            dealer_contribution = dealer_y_corr * y_std * dealer_z * 0.3  # Weight of 0.3
+        # Point estimate: intercept + sum of contributions
+        y_hat = alpha + ar1_contribution + dealer_contribution + weekly_contribution
 
-        # Combine estimates with weights based on data availability
-        # More weight on weekly factor when omega_x is high
-        weekly_weight = 0.3 * omega_x  # Max 30% weight on weekly factor
-        ar1_weight = 1.0 - weekly_weight - 0.2  # Baseline AR(1) weight
-        dealer_weight = 0.2 if dealer_supply_g is not None else 0.0
-
-        if dealer_supply_g is None:
-            ar1_weight = 1.0 - weekly_weight
-
-        y_hat = (ar1_weight * ar1_estimate +
-                 weekly_weight * (alpha + weekly_contribution) +
-                 dealer_weight * (y_mean + dealer_contribution))
+        # Apply mean-reversion decay for quarters further from official data
+        # This ensures estimates don't drift too far from historical mean
+        if quarters_from_official > 1:
+            decay = 0.7 ** (quarters_from_official - 1)
+            y_hat = decay * y_hat + (1 - decay) * y_mean
 
         # Add disclosure pulse contribution if available
         if disclosure_pulse is not None:
@@ -594,7 +604,7 @@ class ShadowNowcaster:
             completeness_disclosure=float(completeness_disclosure),
             as_of_date=today,
             components={
-                "ar1_baseline": float(ar1_estimate),
+                "ar1_contribution": float(ar1_contribution),
                 "weekly_factor_contribution": float(weekly_contribution),
                 "dealer_supply_contribution": float(dealer_contribution),
                 "disclosure_contribution": float(0.1 * disclosure_pulse) if disclosure_pulse else 0.0,
