@@ -1,0 +1,178 @@
+{
+  "report_date": "2026-01-16T05:04:05.472204",
+  "indicator_version": "2.0.0",
+  "official_data": {
+    "spec": "default",
+    "n_observations": 51.0,
+    "date_range": {
+      "start": "2012-10-01",
+      "end": "2025-04-01"
+    },
+    "summary": {
+      "pb_lead_mean": 0.008839268542030359,
+      "pb_lead_std": 0.042175062002558654,
+      "pb_intensity_g_mean": 0.008913130513801657,
+      "pb_intensity_g_std": 0.06928383238458388,
+      "dealer_supply_g_mean": 0.017084197764042627,
+      "dealer_supply_g_std": 0.07074405137852029,
+      "pct_accelerating": 0.3137254901960784,
+      "pct_stable": 0.37254901960784315,
+      "pct_decelerating": 0.3137254901960784
+    },
+    "current_regime": "Accelerating",
+    "current_signal": {
+      "signal": 1.0,
+      "reason": "Improving prime balances/revenue momentum likely 1-2 quarters ahead",
+      "regime": "Accelerating",
+      "pb_lead_z": 0.719281740085854,
+      "stress_flag": 0.0
+    },
+    "attribution": {
+      "hf_demand_contribution": 0.03844723391910776,
+      "hf_demand_pct": 65.69818699272362,
+      "lagged_intensity_contribution": 0.00503692113732801,
+      "lagged_intensity_pct": 8.607032366594169,
+      "dealer_supply_contribution": 0.015036841760974085,
+      "dealer_supply_pct": 25.694780640682218,
+      "pb_lead_total": 0.058520996817409854
+    },
+    "forecasts": {
+      "t_plus_1": {
+        "forecast": 0.043616478334796,
+        "lower_bound": 0.0014414163322373427,
+        "upper_bound": 0.08579154033735464
+      },
+      "t_plus_2": {
+        "forecast": 0.03368013267972011,
+        "lower_bound": -0.02958246032411787,
+        "upper_bound": 0.09694272568355808
+      }
+    },
+    "weekly_nowcast_available": 0.0
+  },
+  "shadow_extension": {
+    "success": 1.0,
+    "as_of_date": "2026-01-16",
+    "last_official_quarter": "2025Q2",
+    "last_official_quarter_label": "Q2'25",
+    "model_fit": {
+      "success": 1.0,
+      "n_observations": 50.0,
+      "r_squared": 0.04051227937542856,
+      "residual_std": 0.06304360647066942,
+      "y_mean": 0.008913130513801657,
+      "y_std": 0.06858749478802394,
+      "weekly_y_corr": 0.0,
+      "dealer_y_corr": 0.19311995226426462,
+      "ar1_coef": -0.2975222460058825,
+      "has_weekly_data": 0.0,
+      "coefficients": {
+        "alpha": 0.009403648637706895,
+        "beta_x": 0.0,
+        "beta_dealer": 0.011825623700597353,
+        "X_mean": [
+          0.0,
+          0.017084197764042627
+        ],
+        "X_std": [
+          1.0,
+          0.0700330378417057
+        ],
+        "has_weekly_data": 0.0,
+        "y_mean": 0.008913130513801657,
+        "y_std": 0.06858749478802394,
+        "weekly_y_corr": 0.0,
+        "dealer_y_corr": 0.19311995226426462,
+        "ar1_coef": -0.2975222460058825
+      }
+    },
+    "shadow_estimates": [
+      {
+        "quarter": "2025Q3",
+        "quarter_label": "Q3'25",
+        "estimate_type": "nowcast",
+        "pb_intensity_g": -0.00941673389330579,
+        "pb_intensity_g_pct": -0.9416733893305791,
+        "pb_intensity_level": 0.30539005647637646,
+        "uncertainty_std": 0.16679770447401374,
+        "confidence_lower": -0.3363402346623727,
+        "confidence_upper": 0.3175067668757611,
+        "confidence_lower_pct": -33.63402346623727,
+        "confidence_upper_pct": 31.750676687576114,
+        "completeness_weekly": 0.0,
+        "completeness_disclosure": 0.0,
+        "as_of_date": "2026-01-16",
+        "components": {
+          "weekly_factor_contribution": 0.0,
+          "dealer_supply_contribution": 0.0005585054786652265,
+          "disclosure_contribution": 0.0,
+          "x_bar": 0.0,
+          "omega_x": 0.0
+        }
+      },
+      {
+        "quarter": "2025Q4",
+        "quarter_label": "Q4'25",
+        "estimate_type": "nowcast",
+        "pb_intensity_g": 0.00926102575701786,
+        "pb_intensity_g_pct": 0.9261025757017861,
+        "pb_intensity_level": 0.3082314183101057,
+        "uncertainty_std": 0.1691637475381949,
+        "confidence_lower": -0.32229991941784414,
+        "confidence_upper": 0.3408219709318799,
+        "confidence_lower_pct": -32.22999194178441,
+        "confidence_upper_pct": 34.082197093187986,
+        "completeness_weekly": 0.0,
+        "completeness_disclosure": 0.0,
+        "as_of_date": "2026-01-16",
+        "components": {
+          "weekly_factor_contribution": 0.0,
+          "dealer_supply_contribution": 0.000451563223260905,
+          "disclosure_contribution": 0.0,
+          "x_bar": 0.0,
+          "omega_x": 0.0
+        }
+      },
+      {
+        "quarter": "2026Q1",
+        "quarter_label": "Q1'26",
+        "estimate_type": "nowcast",
+        "pb_intensity_g": 0.004447080355046425,
+        "pb_intensity_g_pct": 0.44470803550464255,
+        "pb_intensity_level": 0.30960520059132574,
+        "uncertainty_std": 0.17149715083502662,
+        "confidence_lower": -0.3316873352816057,
+        "confidence_upper": 0.34058149599169857,
+        "confidence_lower_pct": -33.16873352816057,
+        "confidence_upper_pct": 34.05814959916986,
+        "completeness_weekly": 0.0,
+        "completeness_disclosure": 0.0,
+        "as_of_date": "2026-01-16",
+        "components": {
+          "weekly_factor_contribution": 0.0,
+          "dealer_supply_contribution": 0.0003767036444778799,
+          "disclosure_contribution": 0.0,
+          "x_bar": 0.0,
+          "omega_x": 0.0
+        }
+      }
+    ],
+    "forecasts": [
+      {
+        "quarter": "2026Q2",
+        "quarter_label": "Q2'26",
+        "pb_lead_forecast": 0.043616478334796,
+        "confidence_lower": -0.03904664319021896,
+        "confidence_upper": 0.12627959985981096
+      },
+      {
+        "quarter": "2026Q3",
+        "quarter_label": "Q3'26",
+        "pb_lead_forecast": 0.043616478334796,
+        "confidence_lower": -0.03904664319021896,
+        "confidence_upper": 0.12627959985981096
+      }
+    ],
+    "methodology_note": "Shadow estimates use ridge regression on weekly leverage appetite factor. Uncertainty bands widen for quarters with less weekly data. Estimates will be replaced with official Z.1 values when released."
+  }
+}

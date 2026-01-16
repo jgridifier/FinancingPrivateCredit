@@ -992,14 +992,11 @@ class PrimeLeverageV2Indicator(BaseIndicator):
         # Initialize shadow nowcaster
         nowcaster = ShadowNowcaster()
 
-        # Build weekly factor
+        # Build weekly factor (may be empty if APIs unavailable)
         weekly_factor = nowcaster.build_weekly_factor(weekly_cot, weekly_pd)
 
-        if weekly_factor.height == 0:
-            return {
-                "success": False,
-                "reason": "No weekly data available for shadow estimation",
-            }
+        # Even without weekly data, we can estimate using dealer supply and mean-reversion
+        has_weekly_data = weekly_factor.height > 0
 
         # Fit shadow model on historical data
         quarterly_anchor = result.data
