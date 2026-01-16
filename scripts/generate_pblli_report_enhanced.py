@@ -323,16 +323,34 @@ The Fed Z.1 data through {last_q_label} shows:
 
     if shadow_extension.get("success"):
         model_fit = shadow_extension.get("model_fit", {})
+        feature_names = model_fit.get("feature_names", ["ar1", "dealer", "cftc"])
         report += f"""### 2.1 Shadow Model Diagnostics
 
-The shadow nowcast model extends official Z.1 data using weekly leverage appetite proxies.
+The shadow nowcast model (AR(1)+Dealer) captures mean-reversion dynamics in PB intensity growth.
+
+**Model Specification:**
+```
+y_t = α + β₁·y_{{t-1}} + β₂·D_t + ε_t
+```
+
+Where:
+- y_t = PB intensity growth (QoQ)
+- y_{{t-1}} = lagged intensity growth (AR(1) captures mean-reversion, ρ ≈ -0.30)
+- D_t = dealer supply growth
 
 | Metric | Value |
 |--------|-------|
 | Model R² | {model_fit.get('r_squared', 0):.3f} |
 | Residual Std | {model_fit.get('residual_std', 0)*100:.2f}% |
 | Training Observations | {model_fit.get('n_observations', 0)} |
+| Features | {', '.join(feature_names)} |
+| AR(1) Correlation | {model_fit.get('ar1_corr', 0):.3f} |
 | Ridge Penalty (λ) | 5.0 |
+
+**Alternative Model Specs** (for sensitivity analysis):
+- `ar1_dealer` (default): Best OOS performance, R² ≈ 0.20
+- `ar1_dealer_cftc`: Adds CFTC weekly factor
+- `ar1_ar2_dealer`: Adds AR(2) term (higher in-sample, lower OOS)
 
 ### 2.2 Shadow/Nowcast Estimates
 

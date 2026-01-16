@@ -1,5 +1,5 @@
 {
-  "report_date": "2026-01-16T05:22:42.731579",
+  "report_date": "2026-01-16T12:24:45.108399",
   "indicator_version": "2.0.0",
   "official_data": {
     "spec": "default",
@@ -57,33 +57,52 @@
     "last_official_quarter_label": "Q2'25",
     "model_fit": {
       "success": 1.0,
-      "n_observations": 50.0,
-      "r_squared": 0.04065049519388386,
-      "residual_std": 0.0630390655384068,
+      "n_observations": 49.0,
+      "r_squared": 0.2260138146449725,
+      "residual_std": 0.0540665585249803,
       "y_mean": 0.008913130513801657,
       "y_std": 0.06858749478802394,
-      "weekly_y_corr": 0.06450944099288011,
+      "ar1_corr": -0.2975222460058825,
       "dealer_y_corr": 0.19311995226426462,
-      "ar1_coef": -0.2975222460058825,
+      "cftc_y_corr": 0.0645094409928801,
       "has_weekly_data": 1.0,
+      "model_spec": "ar1_dealer",
+      "feature_names": [
+        "ar1",
+        "dealer",
+        "cftc"
+      ],
       "coefficients": {
-        "alpha": 0.009403648637706895,
-        "beta_x": 0.000968320603839739,
-        "beta_dealer": 0.011611370178643431,
+        "alpha": 0.006403496999876891,
+        "feature_names": [
+          "ar1",
+          "dealer",
+          "cftc"
+        ],
+        "betas": {
+          "ar1": -0.026347954107570706,
+          "dealer": 0.021066075122091882,
+          "cftc": -0.00033410841221653175
+        },
         "X_mean": [
-          -0.1314068802751391,
-          0.017084197764042627
+          0.007133437569230887,
+          0.01600751751841288,
+          -0.13414314419035078
         ],
         "X_std": [
-          0.3578616422551351,
-          0.07003303784170571
+          0.06813137369118111,
+          0.07033319833393226,
+          0.3609766869162215
         ],
         "has_weekly_data": 1.0,
+        "has_ar1": 1.0,
+        "has_ar2": 0.0,
+        "has_cftc": 1.0,
         "y_mean": 0.008913130513801657,
         "y_std": 0.06858749478802394,
-        "weekly_y_corr": 0.06450944099288011,
+        "ar1_corr": -0.2975222460058825,
         "dealer_y_corr": 0.19311995226426462,
-        "ar1_coef": -0.2975222460058825
+        "cftc_y_corr": 0.0645094409928801
       }
     },
     "shadow_estimates": [
@@ -91,69 +110,68 @@
         "quarter": "2025Q3",
         "quarter_label": "Q3'25",
         "estimate_type": "shadow",
-        "pb_intensity_g": 0.015285238043880343,
-        "pb_intensity_g_pct": 1.5285238043880343,
-        "pb_intensity_level": 0.3130277376097346,
-        "uncertainty_std": 0.08915070144374128,
-        "confidence_lower": -0.15945013678585254,
-        "confidence_upper": 0.19002061287361324,
-        "confidence_lower_pct": -15.945013678585255,
-        "confidence_upper_pct": 19.002061287361325,
+        "pb_intensity_g": -0.018962485297317377,
+        "pb_intensity_g_pct": -1.8962485297317377,
+        "pb_intensity_level": 0.3024887485290976,
+        "uncertainty_std": 0.0936460263556621,
+        "confidence_lower": -0.2025086969544151,
+        "confidence_upper": 0.16458372635978036,
+        "confidence_lower_pct": -20.25086969544151,
+        "confidence_upper_pct": 16.458372635978037,
         "completeness_weekly": 1.0,
         "completeness_disclosure": 0.0,
         "as_of_date": "2026-01-16",
         "components": {
-          "weekly_factor_contribution": 0.0008837242486900537,
-          "dealer_supply_contribution": 0.004997865157483396,
-          "disclosure_contribution": 0.0,
-          "x_bar": 0.19519053971454117,
-          "omega_x": 1.0
+          "alpha": 0.006403496999876891,
+          "ar1": -0.03441238998178867,
+          "dealer": 0.009351228350878657,
+          "cftc": -0.00030482066628425235
         }
       },
       {
         "quarter": "2025Q4",
         "quarter_label": "Q4'25",
         "estimate_type": "nowcast",
-        "pb_intensity_g": 0.007628933751394083,
-        "pb_intensity_g_pct": 0.7628933751394084,
-        "pb_intensity_level": 0.3154249378968617,
-        "uncertainty_std": 0.09350204449477137,
-        "confidence_lower": -0.1756350734583578,
-        "confidence_upper": 0.19089294096114598,
-        "confidence_lower_pct": -17.56350734583578,
-        "confidence_upper_pct": 19.0892940961146,
+        "pb_intensity_g": 0.018715004559734953,
+        "pb_intensity_g_pct": 1.8715004559734953,
+        "pb_intensity_level": 0.3082031324090019,
+        "uncertainty_std": 0.10114926904121907,
+        "confidence_lower": -0.17953756276105443,
+        "confidence_upper": 0.21696757188052435,
+        "confidence_lower_pct": -17.95375627610544,
+        "confidence_upper_pct": 21.696757188052434,
         "completeness_weekly": 1.0,
         "completeness_disclosure": 0.0,
         "as_of_date": "2026-01-16",
         "components": {
-          "weekly_factor_contribution": 0.000642135704000916,
-          "dealer_supply_contribution": 0.0034985056102383766,
-          "disclosure_contribution": 0.0,
-          "x_bar": 0.10590681177396376,
-          "omega_x": 1.0
+          "alpha": 0.006403496999876891,
+          "ar1": 0.010091887787248857,
+          "dealer": 0.006642605454264422,
+          "cftc": -0.00022218251911237588,
+          "mean_reversion_adj": -0.0053467770857459134
         }
       },
       {
         "quarter": "2026Q1",
         "quarter_label": "Q1'26",
         "estimate_type": "nowcast",
-        "pb_intensity_g": 0.0064599901113654365,
-        "pb_intensity_g_pct": 0.6459990111365437,
-        "pb_intensity_level": 0.317469175645291,
-        "uncertainty_std": 0.1655900785351987,
-        "confidence_lower": -0.31809656381762397,
-        "confidence_upper": 0.33101654404035485,
-        "confidence_lower_pct": -31.809656381762398,
-        "confidence_upper_pct": 33.101654404035486,
+        "pb_intensity_g": 0.007751802110216546,
+        "pb_intensity_g_pct": 0.7751802110216546,
+        "pb_intensity_level": 0.3106015461052294,
+        "uncertainty_std": 0.19493974904969114,
+        "confidence_lower": -0.3743301060271781,
+        "confidence_upper": 0.38983371024761115,
+        "confidence_lower_pct": -37.43301060271781,
+        "confidence_upper_pct": 38.98337102476111,
         "completeness_weekly": 0.07692307692307693,
         "completeness_disclosure": 0.0,
         "as_of_date": "2026-01-16",
         "components": {
-          "weekly_factor_contribution": 0.0003672015395680938,
-          "dealer_supply_contribution": 0.002448953927166863,
-          "disclosure_contribution": 0.0,
-          "x_bar": 0.004299563920486488,
-          "omega_x": 0.07692307692307693
+          "alpha": 0.006403496999876891,
+          "ar1": -0.0044788557609701535,
+          "dealer": 0.004746569426634457,
+          "cftc": -0.00012813811823976276,
+          "mean_reversion_adj": -0.0035225056343089903
         }
       }
     ],

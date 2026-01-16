@@ -46,9 +46,9 @@ The shadow nowcast model extends official Z.1 data using weekly leverage appetit
 
 | Metric | Value |
 |--------|-------|
-| Model R² | 0.041 |
-| Residual Std | 6.30% |
-| Training Observations | 50 |
+| Model R² | 0.226 |
+| Residual Std | 5.41% |
+| Training Observations | 49 |
 | Ridge Penalty (λ) | 5.0 |
 
 ### 2.2 Shadow/Nowcast Estimates
@@ -57,9 +57,9 @@ These estimates extend the indicator beyond the official Z.1 release:
 
 | Quarter | Type | PB Intensity Growth | 95% CI | Completeness |
 |---------|------|---------------------|--------|--------------|
-| Q3'25 | Shadow | +1.53% | [-15.95%, +19.00%] | 100% weekly |
-| Q4'25 | Nowcast | +0.76% | [-17.56%, +19.09%] | 100% weekly |
-| Q1'26 | Nowcast | +0.65% | [-31.81%, +33.10%] | 8% weekly |
+| Q3'25 | Shadow | -1.90% | [-20.25%, +16.46%] | 100% weekly |
+| Q4'25 | Nowcast | +1.87% | [-17.95%, +21.70%] | 100% weekly |
+| Q1'26 | Nowcast | +0.78% | [-37.43%, +38.98%] | 8% weekly |
 
 **Interpretation**: Shadow estimates bridge the gap between the last official Z.1 release and the current quarter. These estimates use weekly CFTC positioning and NY Fed dealer statistics as leading indicators. Uncertainty bands are wider for quarters with less data coverage.
 
