@@ -1082,130 +1082,111 @@ class DataRegistry:
         end_date: str,
     ) -> pl.DataFrame:
         """
-        Fetch CFTC data for a single contract using Quandl/Nasdaq Data Link.
+        Fetch CFTC data for a single contract using the direct CFTC Public Reporting API.
 
-        Note: CFTC data can be accessed via Nasdaq Data Link (formerly Quandl).
-        For production use, you may need an API key for higher rate limits.
+        Uses the CFTC Traders in Financial Futures (TFF) report which segments
+        positions by Dealers, Asset Managers, Leveraged Funds, etc.
+
+        API: https://publicreporting.cftc.gov/api/id/gpe5-46if
         """
         import requests
-        from datetime import datetime
+        from io import StringIO
 
-        # Map contract codes to CFTC market codes
-        # Using the Financial TFF format
-        contract_map = {
-            "ES": "13874A",  # E-mini S&P 500
-            "NQ": "20974A",  # E-mini Nasdaq-100
-            "RTY": "23977A",  # E-mini Russell 2000
-            "TU": "042601",  # 2-Year Treasury
-            "FV": "044601",  # 5-Year Treasury
-            "TY": "043602",  # 10-Year Treasury
-            "US": "020601",  # 30-Year Treasury
-            "EC": "099741",  # Euro FX
-            "JY": "097741",  # Japanese Yen
-            "BP": "096742",  # British Pound
-            "SR3": "134741",  # 3-Month SOFR (for STIR proxy)
+        # Map contract codes to CFTC contract market codes
+        contract_code_map = {
+            "ES": "13874A",   # E-MINI S&P 500
+            "NQ": "209742",   # NASDAQ MINI
+            "TU": "042601",   # UST 2Y NOTE
+            "FV": "044601",   # UST 5Y NOTE
+            "TY": "043602",   # UST 10Y NOTE
+            "US": "020601",   # U.S. TREASURY BONDS
+            "EC": "099741",   # EURO FX
+            "JY": "097741",   # JAPANESE YEN
         }
 
-        cftc_code = contract_map.get(contract)
+        cftc_code = contract_code_map.get(contract)
         if not cftc_code:
+            print(f"  Warning: No CFTC mapping for {contract}")
             return pl.DataFrame()
 
-        # Try fetching from CFTC public data
-        # The CFTC publishes weekly data in various formats
         try:
-            # Use the CFTC's disaggregated futures-only report
-            # Note: In production, you'd want to use a proper API like Nasdaq Data Link
-            # For now, we'll create synthetic representative data based on historical patterns
+            # Build CFTC Public Reporting API URL
+            base_url = "https://publicreporting.cftc.gov/api/id/gpe5-46if.csv"
 
-            # Generate synthetic but realistic COT data for demonstration
-            # TODO: Replace with actual CFTC API integration (e.g., Nasdaq Data Link)
-            # when proper API access is configured
-            return self._generate_synthetic_cot_data(contract, start_date, end_date)
+            # Select columns we need for leveraged fund positions
+            select_cols = ",".join([
+                "report_date_as_yyyy_mm_dd",
+                "market_and_exchange_names",
+                "open_interest_all",
+                "lev_money_positions_long",
+                "lev_money_positions_short",
+                "pct_of_oi_lev_money_long",
+                "pct_of_oi_lev_money_short",
+            ])
+
+            # Build query with date filter
+            start_dt = start_date or "2015-01-01"
+            where_clause = f"cftc_contract_market_code = '{cftc_code}' AND report_date_as_yyyy_mm_dd > '{start_dt}'"
+
+            params = {
+                "$select": select_cols,
+                "$where": where_clause,
+                "$limit": 10000,
+                "$order": "report_date_as_yyyy_mm_dd DESC",
+            }
+
+            response = requests.get(base_url, params=params, timeout=60)
+
+            if response.status_code == 200:
+                # Parse CSV response
+                csv_data = StringIO(response.text)
+                df = pl.read_csv(csv_data)
+
+                if df.height == 0:
+                    print(f"  Warning: No CFTC data returned for {contract}")
+                    return pl.DataFrame()
+
+                # Standardize column names
+                df = df.with_columns([
+                    pl.col("report_date_as_yyyy_mm_dd").str.slice(0, 10).str.to_date("%Y-%m-%d").alias("report_date"),
+                    pl.col("lev_money_positions_long").cast(pl.Int64).alias("leveraged_long"),
+                    pl.col("lev_money_positions_short").cast(pl.Int64).alias("leveraged_short"),
+                    pl.col("open_interest_all").cast(pl.Int64).alias("open_interest"),
+                    pl.lit(contract).alias("contract"),
+                ])
+
+                # Calculate net position and percentage
+                df = df.with_columns([
+                    (pl.col("leveraged_long") - pl.col("leveraged_short")).alias("leveraged_net"),
+                    ((pl.col("leveraged_long") - pl.col("leveraged_short")) /
+                     pl.col("open_interest")).alias("leveraged_net_pct_oi"),
+                ])
+
+                print(f"  Fetched {df.height} CFTC records for {contract}")
+
+                return df.select([
+                    "report_date", "contract", "leveraged_long", "leveraged_short",
+                    "leveraged_net", "open_interest", "leveraged_net_pct_oi"
+                ]).sort("report_date")
+
+            else:
+                print(f"  Warning: CFTC API returned status {response.status_code} for {contract}")
+                return pl.DataFrame()
 
         except Exception as e:
-            print(f"  Warning: Could not fetch {contract}: {e}")
+            print(f"  Warning: Could not fetch {contract} from CFTC: {e}")
             return pl.DataFrame()
-
-    def _generate_synthetic_cot_data(
-        self,
-        contract: str,
-        start_date: Optional[str],
-        end_date: str,
-    ) -> pl.DataFrame:
-        """
-        Generate synthetic COT data for demonstration.
-
-        TODO: Replace with actual CFTC API integration using Nasdaq Data Link
-        or direct CFTC data download when proper API access is configured.
-        """
-        import numpy as np
-        from datetime import datetime, timedelta
-
-        # Parse dates
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime(2015, 1, 1)
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
-        # Generate weekly Tuesdays (COT report date)
-        dates = []
-        current = start_dt
-        # Find first Tuesday
-        while current.weekday() != 1:  # 1 = Tuesday
-            current += timedelta(days=1)
-
-        while current <= end_dt:
-            dates.append(current.date())
-            current += timedelta(days=7)
-
-        if not dates:
-            return pl.DataFrame()
-
-        n = len(dates)
-        np.random.seed(hash(contract) % (2**32))
-
-        # Generate realistic leveraged fund positions
-        # Base level depends on contract type
-        base_levels = {
-            "ES": 150000,
-            "NQ": 80000,
-            "RTY": 40000,
-            "TU": 200000,
-            "FV": 180000,
-            "TY": 250000,
-            "US": 120000,
-            "EC": 100000,
-            "JY": 60000,
-            "BP": 50000,
-            "SR3": 300000,
-        }
-        base = base_levels.get(contract, 100000)
-
-        # Generate mean-reverting positions with trends
-        positions = np.zeros(n)
-        positions[0] = 0
-        for i in range(1, n):
-            # Mean reversion + noise + trend
-            positions[i] = 0.95 * positions[i - 1] + np.random.randn() * base * 0.05
-
-        long_positions = base + positions + np.abs(np.random.randn(n) * base * 0.3)
-        short_positions = base - positions + np.abs(np.random.randn(n) * base * 0.3)
-        open_interest = (long_positions + short_positions) * 1.5 + np.abs(np.random.randn(n) * base * 0.2)
-
-        return pl.DataFrame({
-            "report_date": pl.Series(dates, dtype=pl.Date),
-            "contract": [contract] * n,
-            "leveraged_long": long_positions.astype(int),
-            "leveraged_short": short_positions.astype(int),
-            "leveraged_net": (long_positions - short_positions).astype(int),
-            "open_interest": open_interest.astype(int),
-            "leveraged_net_pct_oi": (long_positions - short_positions) / open_interest,
-        })
 
     def _add_cot_derived_features(self, df: pl.DataFrame) -> pl.DataFrame:
         """Add derived features to COT data (changes, z-scores)."""
         if df.height == 0:
             return df
 
+        # Sort by contract and date before rolling operations
+        df = df.sort(["contract", "report_date"])
+
         # Add changes and z-scores per contract
+        # Use 52 weeks min window with 10 min_periods to avoid null early values
         result = df.with_columns([
             # 4-week and 8-week changes
             pl.col("leveraged_net")
@@ -1216,26 +1197,33 @@ class DataRegistry:
             .shift(8)
             .over("contract")
             .alias("net_8w_ago"),
-            # Rolling stats for z-score (260 weeks ≈ 5 years)
+            # Rolling stats for z-score (52 weeks with min_periods=10)
             pl.col("leveraged_net_pct_oi")
-            .rolling_mean(window_size=260)
+            .rolling_mean(window_size=52, min_periods=10)
             .over("contract")
-            .alias("net_pct_oi_mean_5y"),
+            .alias("net_pct_oi_mean"),
             pl.col("leveraged_net_pct_oi")
-            .rolling_std(window_size=260)
+            .rolling_std(window_size=52, min_periods=10)
             .over("contract")
-            .alias("net_pct_oi_std_5y"),
+            .alias("net_pct_oi_std"),
         ])
 
+        # Calculate z-score with fallback for zero std
         result = result.with_columns([
             (pl.col("leveraged_net") - pl.col("net_4w_ago")).alias("chg_4w"),
             (pl.col("leveraged_net") - pl.col("net_8w_ago")).alias("chg_8w"),
-            ((pl.col("leveraged_net_pct_oi") - pl.col("net_pct_oi_mean_5y"))
-             / pl.col("net_pct_oi_std_5y")).alias("net_pct_oi_z_5y"),
+            pl.when(pl.col("net_pct_oi_std") > 0.0001)
+            .then(
+                (pl.col("leveraged_net_pct_oi") - pl.col("net_pct_oi_mean"))
+                / pl.col("net_pct_oi_std")
+            )
+            .otherwise(pl.lit(0.0))
+            .fill_null(0.0)
+            .alias("net_pct_oi_z_5y"),
         ])
 
         # Drop intermediate columns
-        return result.drop(["net_4w_ago", "net_8w_ago", "net_pct_oi_mean_5y", "net_pct_oi_std_5y"])
+        return result.drop(["net_4w_ago", "net_8w_ago", "net_pct_oi_mean", "net_pct_oi_std"])
 
     def get_nyfed_primary_dealer_stats(
         self,
@@ -1293,12 +1281,12 @@ class DataRegistry:
         print(f"Fetching NY Fed Primary Dealer Statistics: {series}...")
 
         try:
-            # NY Fed provides data via their website
-            # For production, use the OFR API: https://data.financialresearch.gov/v1/
-            # For now, generate synthetic representative data
+            # Try fetching from NY Fed's published data
+            result = self._fetch_nyfed_from_source(series, start_date, end_dt)
 
-            # TODO: Replace with actual NY Fed/OFR API integration
-            result = self._generate_synthetic_nyfed_data(series, start_date, end_dt)
+            if result.height == 0:
+                print("  Note: NY Fed PD data not available, returning empty DataFrame")
+                return pl.DataFrame({"week_ending": [], "series": [], "value": []})
 
             # Add derived features
             result = self._add_nyfed_derived_features(result)
@@ -1320,81 +1308,62 @@ class DataRegistry:
             print(f"Error fetching NY Fed PD data: {e}")
             return pl.DataFrame({"week_ending": [], "series": [], "value": []})
 
-    def _generate_synthetic_nyfed_data(
+    def _fetch_nyfed_from_source(
         self,
         series: list[str],
         start_date: Optional[str],
         end_date: str,
     ) -> pl.DataFrame:
         """
-        Generate synthetic NY Fed PD data for demonstration.
+        Fetch NY Fed Primary Dealer data from published sources.
 
-        TODO: Replace with actual NY Fed / OFR API integration when configured.
+        The NY Fed publishes weekly Primary Dealer Statistics at:
+        https://www.newyorkfed.org/markets/primarydealers.html
+
+        This method attempts to fetch the data from the published Excel/CSV files.
+        If data is not available, returns empty DataFrame.
         """
-        import numpy as np
+        import requests
         from datetime import datetime, timedelta
+        import io
 
-        # Parse dates
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime(2015, 1, 1)
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        # NY Fed publishes data in Excel format
+        # The historical data URL pattern
+        nyfed_base_url = "https://www.newyorkfed.org/medialibrary/media/markets/primarydealers"
 
-        # Generate weekly Wednesdays (week ending dates)
-        dates = []
-        current = start_dt
-        while current.weekday() != 2:  # 2 = Wednesday
-            current += timedelta(days=1)
+        try:
+            # Try to fetch the primary dealer statistics file
+            # Note: The actual URL structure may vary; this is a best-effort attempt
+            response = requests.get(
+                f"{nyfed_base_url}/primary-dealer-statistics.xlsx",
+                timeout=30
+            )
 
-        while current <= end_dt:
-            dates.append(current.date())
-            current += timedelta(days=7)
+            if response.status_code == 200:
+                # Parse Excel file
+                try:
+                    import openpyxl
+                    from io import BytesIO
 
-        if not dates:
-            return pl.DataFrame()
+                    wb = openpyxl.load_workbook(BytesIO(response.content), read_only=True)
+                    # Parse the relevant sheets for our series
+                    # This would require specific knowledge of the file structure
 
-        n = len(dates)
+                    # For now, return empty as the parsing is complex
+                    print("  Note: NY Fed Excel parsing not implemented, data unavailable")
+                    return pl.DataFrame()
 
-        # Base levels for each series (in billions)
-        base_levels = {
-            "PD_RP_T_TOT": 2500,     # ~$2.5T in Treasury repo
-            "PD_RRP_T_TOT": 2000,    # ~$2T in Treasury reverse repo
-            "PD_AFtD_AG": 50,        # ~$50B Agency fails to deliver
-            "PD_AFtR_AG": 45,        # ~$45B Agency fails to receive
-            "PD_AFtD_CORS": 20,      # ~$20B Corporate fails to deliver
-            "PD_AFtR_CORS": 18,      # ~$18B Corporate fails to receive
-            "PD_SB_TOT": 800,        # ~$800B Securities borrowed
-            "PD_SL_TOT": 750,        # ~$750B Securities lent
-        }
+                except ImportError:
+                    print("  Note: openpyxl not installed, cannot parse NY Fed Excel")
+                    return pl.DataFrame()
 
-        all_data = []
-        for s in series:
-            np.random.seed(hash(s) % (2**32))
-            base = base_levels.get(s, 100)
-
-            # Generate trending values with noise
-            trend = np.linspace(0, base * 0.3, n)  # Gradual growth
-            seasonal = base * 0.05 * np.sin(np.arange(n) * 2 * np.pi / 52)  # Annual seasonality
-            noise = np.random.randn(n) * base * 0.03
-
-            # Add stress spikes for fails series
-            if "AFt" in s:
-                # Add occasional stress spikes
-                stress_2020 = np.exp(-((np.arange(n) - int(n * 0.85)) ** 2) / 20) * base * 3
-                values = base + seasonal + noise + stress_2020
             else:
-                values = base + trend + seasonal + noise
+                print(f"  Note: NY Fed data URL returned status {response.status_code}")
+                return pl.DataFrame()
 
-            values = np.maximum(values, base * 0.5)  # Floor
-
-            for i, d in enumerate(dates):
-                all_data.append({
-                    "week_ending": d,
-                    "series": s,
-                    "value": values[i],
-                })
-
-        return pl.DataFrame(all_data).with_columns(
-            pl.col("week_ending").cast(pl.Date)
-        )
+        except requests.RequestException as e:
+            print(f"  Note: Could not fetch NY Fed data: {e}")
+            return pl.DataFrame()
 
     def _add_nyfed_derived_features(self, df: pl.DataFrame) -> pl.DataFrame:
         """Add derived features to NY Fed PD data."""

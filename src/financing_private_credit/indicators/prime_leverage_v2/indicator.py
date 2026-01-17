@@ -952,3 +952,209 @@ class PrimeLeverageV2Indicator(BaseIndicator):
         useful for tracking intra-quarter developments.
         """
         return self.calculate(data, **kwargs)
+
+    def calculate_shadow_extension(
+        self,
+        data: dict[str, pl.DataFrame],
+        result: IndicatorResult,
+        as_of_date: Optional[datetime] = None,
+    ) -> dict[str, Any]:
+        """
+        Calculate shadow/nowcast extension beyond official Z.1 data.
+
+        Implements the three-layer publication system:
+        1. Official layer: through last Z.1 release (e.g., Q2'25)
+        2. Shadow backfill: completed but unreported quarters (e.g., Q3'25)
+        3. Progressive nowcast: current quarter (e.g., Q4'25)
+
+        Args:
+            data: Data dictionary from fetch_data
+            result: IndicatorResult from calculate()
+            as_of_date: As-of date for nowcast (defaults to today)
+
+        Returns:
+            Dictionary with shadow estimates and forecasts
+        """
+        from .shadow_nowcast import (
+            ShadowNowcaster,
+            ShadowNowcastConfig,
+            get_quarter_from_date,
+            format_quarter_label,
+        )
+        from datetime import date
+
+        as_of = as_of_date.date() if as_of_date else date.today()
+
+        # Get weekly data
+        weekly_cot = data.get("weekly_cot", pl.DataFrame())
+        weekly_pd = data.get("weekly_pd", pl.DataFrame())
+
+        # Initialize shadow nowcaster
+        nowcaster = ShadowNowcaster()
+
+        # Build weekly factor (may be empty if APIs unavailable)
+        weekly_factor = nowcaster.build_weekly_factor(weekly_cot, weekly_pd)
+
+        # Even without weekly data, we can estimate using dealer supply and mean-reversion
+        has_weekly_data = weekly_factor.height > 0
+
+        # Fit shadow model on historical data
+        quarterly_anchor = result.data
+
+        model_fit = nowcaster.fit_shadow_model(
+            quarterly_anchor,
+            weekly_factor,
+        )
+
+        if not model_fit.get("success"):
+            return {
+                "success": False,
+                "reason": model_fit.get("reason", "Model fitting failed"),
+            }
+
+        # Determine quarters to estimate
+        # Last official quarter from Z.1 data
+        last_official_date = result.data["date"].max()
+        last_official_year = last_official_date.year
+        last_official_quarter = (last_official_date.month - 1) // 3 + 1
+
+        # Current quarter
+        current_year, current_quarter = get_quarter_from_date(as_of)
+
+        # Last official PB intensity level
+        last_official_intensity = float(result.data["pb_intensity"][-1])
+
+        # Generate shadow estimates
+        shadow_estimates = []
+
+        # Shadow backfill for quarters between last official and current
+        q_year, q_num = last_official_year, last_official_quarter
+
+        # Track last pb_intensity_g for AR(1) estimation
+        last_pb_intensity_g = float(result.data["pb_intensity_g"][-1]) if result.data["pb_intensity_g"][-1] is not None else None
+        quarters_from_official = 0
+
+        while True:
+            # Move to next quarter
+            q_num += 1
+            if q_num > 4:
+                q_num = 1
+                q_year += 1
+
+            quarters_from_official += 1
+
+            # Stop if we've passed current quarter
+            if (q_year > current_year) or (q_year == current_year and q_num > current_quarter):
+                break
+
+            # Get dealer supply if available (use last known value with mean-reversion)
+            dealer_supply_g = None
+            if "dealer_supply_g" in result.data.columns:
+                last_dealer_g = result.data["dealer_supply_g"][-1]
+                if last_dealer_g is not None:
+                    # Mean-revert dealer supply toward historical average
+                    dealer_mean = float(result.data["dealer_supply_g"].mean())
+                    dealer_supply_g = float(0.7 ** quarters_from_official * last_dealer_g +
+                                           (1 - 0.7 ** quarters_from_official) * dealer_mean)
+
+            # Determine if shadow (complete) or nowcast (partial)
+            if q_year < current_year or (q_year == current_year and q_num < current_quarter):
+                # Completed quarter - shadow estimate
+                estimate = nowcaster.estimate_shadow_quarter(
+                    q_year, q_num, weekly_factor,
+                    last_official_intensity,
+                    dealer_supply_g=dealer_supply_g,
+                    completeness_disclosure=0.0,  # TODO: Add disclosure pulse
+                    last_pb_intensity_g=last_pb_intensity_g,
+                    quarters_from_official=quarters_from_official,
+                )
+            else:
+                # Current quarter - progressive nowcast
+                estimate = nowcaster.estimate_shadow_quarter(
+                    q_year, q_num, weekly_factor,
+                    last_official_intensity,
+                    dealer_supply_g=dealer_supply_g,
+                    as_of_date=as_of,
+                    completeness_disclosure=0.0,
+                    last_pb_intensity_g=last_pb_intensity_g,
+                    quarters_from_official=quarters_from_official,
+                )
+
+            shadow_estimates.append(estimate)
+            last_official_intensity = estimate.pb_intensity_level
+            last_pb_intensity_g = estimate.pb_intensity_g  # Chain for next estimate
+
+        # Chain levels forward
+        if shadow_estimates:
+            base_level = float(result.data["pb_intensity"][-1])
+            shadow_estimates = nowcaster.chain_intensity_levels(shadow_estimates, base_level)
+
+        # Generate forecasts for next 2 quarters beyond current
+        forecast_estimates = []
+        forecast_year, forecast_quarter = current_year, current_quarter
+
+        for _ in range(2):
+            forecast_quarter += 1
+            if forecast_quarter > 4:
+                forecast_quarter = 1
+                forecast_year += 1
+
+            # Use mean-reversion forecast
+            pb_lead_mean = result.metadata.get("summary", {}).get("pb_lead_mean", 0.01)
+            pb_lead_std = result.metadata.get("summary", {}).get("pb_lead_std", 0.04)
+
+            # Current pb_lead if available
+            current_pb_lead = result.data["pb_lead"][-1] if "pb_lead" in result.data.columns else pb_lead_mean
+
+            # Mean reversion
+            reversion_speed = 0.3  # Revert 30% per quarter
+            forecast_pb_lead = current_pb_lead * (1 - reversion_speed) + pb_lead_mean * reversion_speed
+
+            forecast_estimates.append({
+                "quarter": f"{forecast_year}Q{forecast_quarter}",
+                "quarter_label": format_quarter_label(forecast_year, forecast_quarter),
+                "pb_lead_forecast": float(forecast_pb_lead),
+                "confidence_lower": float(forecast_pb_lead - 1.96 * pb_lead_std),
+                "confidence_upper": float(forecast_pb_lead + 1.96 * pb_lead_std),
+            })
+
+            current_pb_lead = forecast_pb_lead
+
+        # Build output
+        shadow_output = []
+        for est in shadow_estimates:
+            shadow_output.append({
+                "quarter": est.quarter,
+                "quarter_label": format_quarter_label(
+                    int(est.quarter[:4]),
+                    int(est.quarter[-1])
+                ),
+                "estimate_type": est.estimate_type,
+                "pb_intensity_g": est.pb_intensity_g,
+                "pb_intensity_g_pct": est.pb_intensity_g * 100,
+                "pb_intensity_level": est.pb_intensity_level,
+                "uncertainty_std": est.uncertainty_std,
+                "confidence_lower": est.confidence_lower,
+                "confidence_upper": est.confidence_upper,
+                "confidence_lower_pct": est.confidence_lower * 100,
+                "confidence_upper_pct": est.confidence_upper * 100,
+                "completeness_weekly": est.completeness_weekly,
+                "completeness_disclosure": est.completeness_disclosure,
+                "as_of_date": str(est.as_of_date),
+                "components": est.components,
+            })
+
+        return {
+            "success": True,
+            "as_of_date": str(as_of),
+            "last_official_quarter": f"{last_official_year}Q{last_official_quarter}",
+            "last_official_quarter_label": format_quarter_label(last_official_year, last_official_quarter),
+            "model_fit": model_fit,
+            "shadow_estimates": shadow_output,
+            "forecasts": forecast_estimates,
+            "methodology_note": (
+                "Shadow estimates use ridge regression on weekly leverage appetite factor. "
+                "Uncertainty bands widen for quarters with less weekly data. "
+                "Estimates will be replaced with official Z.1 values when released."
+            ),
+        }

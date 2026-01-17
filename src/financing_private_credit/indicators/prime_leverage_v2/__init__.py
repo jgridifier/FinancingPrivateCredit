@@ -15,8 +15,18 @@ from .indicator import (
     PrimeLeverageV2Indicator,
     PBLLISpec,
 )
+from .shadow_nowcast import (
+    ShadowNowcaster,
+    ShadowNowcastConfig,
+    ShadowEstimate,
+    BankDisclosureExtractor,
+)
 
 __all__ = [
     "PrimeLeverageV2Indicator",
     "PBLLISpec",
+    "ShadowNowcaster",
+    "ShadowNowcastConfig",
+    "ShadowEstimate",
+    "BankDisclosureExtractor",
 ]
